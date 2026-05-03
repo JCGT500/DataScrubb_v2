@@ -9,3 +9,5 @@ geonamescache>=3.0
 reportlab>=4.0
 folium>=0.17
 streamlit-folium>=0.20
+msal>=1.28
+requests>=2.31

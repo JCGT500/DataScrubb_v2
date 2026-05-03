@@ -140,6 +140,19 @@ class VanguardConfig:
 
 
 @dataclass
+class SharepointConfig:
+    enabled: bool = False
+    tenant_id: str = ""
+    client_id: str = ""
+    site_url: str = ""
+    source_folder: str = "Shared Documents/DataScrubb/Sources"
+    db_backup_folder: str = "Shared Documents/DataScrubb/Backups"
+    auto_push_db: bool = True
+    auto_push_excel: bool = True
+    keep_last_n_backups: int = 12
+
+
+@dataclass
 class StopClassificationConfig:
     use_s_code_for_plasma: bool = True
     rules: list[dict] = field(default_factory=list)
@@ -204,6 +217,7 @@ class Config:
     validation: ValidationConfig = field(default_factory=ValidationConfig)
     map: MapConfig = field(default_factory=MapConfig)
     vanguard: VanguardConfig = field(default_factory=VanguardConfig)
+    sharepoint: SharepointConfig = field(default_factory=SharepointConfig)
     stop_classification: StopClassificationConfig = field(default_factory=StopClassificationConfig)
     warehouse_inclusion: WarehouseInclusionConfig = field(default_factory=WarehouseInclusionConfig)
     sources: dict[str, SourceConfig] = field(default_factory=dict)
@@ -268,6 +282,7 @@ def load_config(
     validation_section = cfg_data.get("validation", {}) or {}
     map_section = cfg_data.get("map", {}) or {}
     vanguard_section = cfg_data.get("vanguard", {}) or {}
+    sharepoint_section = cfg_data.get("sharepoint", {}) or {}
     classify_section = cfg_data.get("stop_classification", {}) or {}
     inclusion_section = cfg_data.get("warehouse_inclusion", {}) or {}
 
@@ -367,6 +382,17 @@ def load_config(
             baseline_min_clean_days=_g(vanguard_section, "baseline_min_clean_days", 7),
             default_baseline_evap_delta=_g(vanguard_section, "default_baseline_evap_delta", -6.5),
             default_baseline_compliance_pct=_g(vanguard_section, "default_baseline_compliance_pct", 90.0),
+        ),
+        sharepoint=SharepointConfig(
+            enabled=_g(sharepoint_section, "enabled", False),
+            tenant_id=_g(sharepoint_section, "tenant_id", ""),
+            client_id=_g(sharepoint_section, "client_id", ""),
+            site_url=_g(sharepoint_section, "site_url", ""),
+            source_folder=_g(sharepoint_section, "source_folder", "Shared Documents/DataScrubb/Sources"),
+            db_backup_folder=_g(sharepoint_section, "db_backup_folder", "Shared Documents/DataScrubb/Backups"),
+            auto_push_db=_g(sharepoint_section, "auto_push_db", True),
+            auto_push_excel=_g(sharepoint_section, "auto_push_excel", True),
+            keep_last_n_backups=_g(sharepoint_section, "keep_last_n_backups", 12),
         ),
         stop_classification=StopClassificationConfig(
             use_s_code_for_plasma=_g(classify_section, "use_s_code_for_plasma", True),

@@ -67,7 +67,7 @@ def render():
         "Matching", "Validation", "Reefer / Telemetry", "Claims-Risk",
         "Driver Scorecard", "Forecast & Detention", "Customer Churn",
         "Capacity", "Revenue", "Map UI", "Warehouse Inclusion",
-        "Reefer (Vanguard SOP)",
+        "Reefer (Vanguard SOP)", "SharePoint",
     ])
 
     # ───────── Matching ─────────
@@ -399,8 +399,194 @@ def render():
             })
         _tab_save_reset(block, _save, "vg")
 
+    # ───────── SharePoint ─────────
+    with tabs[12]:
+        _render_sharepoint_tab(full)
+
     st.markdown("---")
     st.caption(
         f"Settings file: `{DEFAULT_YAML_PATH}` — version-control this file to track changes. "
         "After saving any tab, re-run the pipeline (Load Data → Run Pipeline) to apply."
     )
+
+
+def _render_sharepoint_tab(full: dict) -> None:
+    """SharePoint admin tab — connection, folders, sync settings, manual sync."""
+    from datascrubb.config import load_config
+    from datascrubb.sharepoint import (
+        GraphClient,
+        GraphError,
+        apply_backup_retention,
+        list_db_backups,
+        list_source_files,
+        push_db_backup,
+        restore_db_from_backup,
+    )
+    from datascrubb.sharepoint.auth import (
+        SharepointAuthError,
+        complete_device_flow,
+        initiate_device_flow,
+        sign_out,
+        signed_in_account,
+    )
+
+    st.subheader("SharePoint integration")
+    st.caption(
+        "Pull weekly source files from a SharePoint folder and back the SQLite DB up after every "
+        "pipeline run. One-time Azure AD app registration required — see README → SharePoint setup."
+    )
+
+    block = "sharepoint"
+    cur = full.get(block, {}) or {}
+
+    # ─── Connection section ─────────────────────────────────────
+    st.markdown("**Connection**")
+    enabled = st.checkbox(
+        "Enable SharePoint integration",
+        value=bool(_g(cur, "enabled", False)),
+        help="When off, no SharePoint code paths run and the rest of the app is unaffected.",
+    )
+    c1, c2 = st.columns(2)
+    tenant_id = c1.text_input("Tenant ID", value=str(_g(cur, "tenant_id", "")), help="Azure AD Directory (tenant) ID")
+    client_id = c2.text_input("Client ID", value=str(_g(cur, "client_id", "")), help="Azure AD Application (client) ID")
+    site_url = st.text_input(
+        "Site URL",
+        value=str(_g(cur, "site_url", "")),
+        placeholder="https://contoso.sharepoint.com/sites/datascrubb",
+    )
+
+    # Sign-in status
+    acct = None
+    if tenant_id and client_id:
+        try:
+            acct = signed_in_account(tenant_id, client_id)
+        except Exception as e:
+            st.warning(f"Could not check sign-in status: {e}")
+    if acct:
+        st.success(f"✅ Signed in as **{acct.get('username', acct.get('home_account_id', 'unknown'))}**")
+    else:
+        st.info("Not signed in. Click **Sign in** below after entering Tenant + Client IDs.")
+
+    sb1, sb2, sb3 = st.columns([1, 1, 1])
+    if sb1.button("Sign in", key="sp_signin"):
+        if not tenant_id or not client_id:
+            st.error("Tenant ID and Client ID are required to sign in.")
+        else:
+            try:
+                flow = initiate_device_flow(tenant_id, client_id)
+                st.session_state["sp_flow"] = flow
+                st.info(
+                    f"**Open** {flow['verification_uri']} **and enter code:** `{flow['user_code']}`\n\n"
+                    "Then click **Complete sign-in** below."
+                )
+            except SharepointAuthError as e:
+                st.error(str(e))
+
+    if "sp_flow" in st.session_state:
+        if sb2.button("Complete sign-in", key="sp_complete"):
+            try:
+                complete_device_flow(st.session_state["sp_flow"])
+                st.session_state.pop("sp_flow", None)
+                st.success("Signed in successfully.")
+                st.rerun()
+            except SharepointAuthError as e:
+                st.error(str(e))
+
+    if acct and sb3.button("Sign out", key="sp_signout"):
+        try:
+            sign_out(tenant_id, client_id)
+            st.success("Signed out.")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Sign out failed: {e}")
+
+    st.markdown("---")
+
+    # ─── Folders section ────────────────────────────────────────
+    st.markdown("**Folders**")
+    f1, f2 = st.columns(2)
+    source_folder = f1.text_input(
+        "Source folder",
+        value=str(_g(cur, "source_folder", "Shared Documents/DataScrubb/Sources")),
+        help="Drive-relative path where weekly source files (CRST/SAP/telemetry/M3PL) live",
+    )
+    backup_folder = f2.text_input(
+        "DB backup folder",
+        value=str(_g(cur, "db_backup_folder", "Shared Documents/DataScrubb/Backups")),
+        help="Drive-relative path where DB snapshots are pushed after each pipeline run",
+    )
+
+    # ─── Sync settings ──────────────────────────────────────────
+    st.markdown("**Sync settings**")
+    s1, s2, s3 = st.columns(3)
+    auto_db = s1.checkbox("Auto-push DB after pipeline runs", value=bool(_g(cur, "auto_push_db", True)))
+    auto_xl = s2.checkbox("Auto-push Excel export", value=bool(_g(cur, "auto_push_excel", True)))
+    keep_n = s3.number_input(
+        "Keep last N backups", value=int(_g(cur, "keep_last_n_backups", 12)), min_value=0, step=1,
+        help="Older DB backups are deleted after each push. 0 = keep all.",
+    )
+
+    def _save():
+        update_block(block, {
+            "enabled": enabled,
+            "tenant_id": tenant_id, "client_id": client_id, "site_url": site_url,
+            "source_folder": source_folder, "db_backup_folder": backup_folder,
+            "auto_push_db": auto_db, "auto_push_excel": auto_xl,
+            "keep_last_n_backups": int(keep_n),
+        })
+    _tab_save_reset(block, _save, "sp")
+
+    # ─── Manual sync section ────────────────────────────────────
+    st.markdown("---")
+    st.markdown("**Manual sync**")
+    if not (acct and tenant_id and client_id and site_url):
+        st.caption("Sign in and configure connection above to enable manual sync.")
+        return
+
+    cfg = load_config()  # use saved values; user must Save before Test/Push
+    client = GraphClient(cfg.sharepoint.tenant_id, cfg.sharepoint.client_id, cfg.sharepoint.site_url)
+
+    m1, m2, m3 = st.columns(3)
+    if m1.button("Test connection", key="sp_test"):
+        try:
+            me = client.whoami()
+            classified = list_source_files(client, cfg.sharepoint.source_folder)
+            counts = ", ".join(f"{k}: {len(v)}" for k, v in classified.items())
+            st.success(f"Connected as {me.get('displayName')}. Source folder contents: {counts}")
+        except (GraphError, Exception) as e:
+            st.error(f"Connection test failed: {e}")
+
+    if m2.button("Push DB now", key="sp_push_db"):
+        try:
+            db_path = cfg.db_path
+            if not db_path.exists():
+                st.error(f"No DB found at {db_path}. Run the pipeline at least once first.")
+            else:
+                item = push_db_backup(client, db_path, cfg.sharepoint.db_backup_folder)
+                deleted = apply_backup_retention(client, cfg.sharepoint.db_backup_folder, cfg.sharepoint.keep_last_n_backups)
+                msg = f"Pushed `{item['name']}` to SharePoint."
+                if deleted:
+                    msg += f" Deleted {deleted} older backup(s)."
+                st.success(msg)
+        except (GraphError, Exception) as e:
+            st.error(f"Push failed: {e}")
+
+    # Restore — gated behind a confirm input
+    with m3.expander("⚠️ Restore DB from backup"):
+        st.warning("This will overwrite your local `data/datascrubb.db`. The current local DB is saved as `.prev`.")
+        confirm = st.text_input("Type RESTORE to confirm", key="sp_restore_confirm")
+        backups = []
+        try:
+            backups = list_db_backups(client, cfg.sharepoint.db_backup_folder)
+        except GraphError as e:
+            st.error(f"Could not list backups: {e}")
+        choice = "latest"
+        if backups:
+            names = ["latest"] + [b["name"] for b in backups]
+            choice = st.selectbox("Backup to restore", names, key="sp_restore_pick")
+        if st.button("Restore now", key="sp_restore_go", disabled=(confirm != "RESTORE")):
+            try:
+                dest = restore_db_from_backup(client, cfg.sharepoint.db_backup_folder, cfg.db_path, which=choice)
+                st.success(f"Restored DB from `{choice}` → {dest}")
+            except (GraphError, Exception) as e:
+                st.error(f"Restore failed: {e}")

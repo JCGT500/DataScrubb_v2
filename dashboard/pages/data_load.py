@@ -15,6 +15,42 @@ def render():
     st.header("Load Data")
     st.markdown("Upload your data files and run the pipeline to process, match, and validate.")
 
+    # ─── Source toggle ────────────────────────────────────────
+    sp_available = _sharepoint_available()
+    options = ["Local upload"]
+    if sp_available:
+        options.append("SharePoint folder")
+    source_mode = st.radio(
+        "Source", options,
+        horizontal=True,
+        help=(
+            "Local: drag-and-drop files from your machine. "
+            "SharePoint: pull this week's files from the configured SharePoint folder. "
+            "(Configure SharePoint in Admin → SharePoint.)"
+        ),
+    )
+
+    if source_mode == "SharePoint folder":
+        _render_sharepoint_load()
+    else:
+        _render_local_upload()
+
+
+def _sharepoint_available() -> bool:
+    try:
+        from datascrubb.config import load_config
+        cfg = load_config()
+        return bool(
+            cfg.sharepoint.enabled
+            and cfg.sharepoint.tenant_id
+            and cfg.sharepoint.client_id
+            and cfg.sharepoint.site_url
+        )
+    except Exception:
+        return False
+
+
+def _render_local_upload():
     st.subheader("1. Upload Source Files")
 
     st.caption("All file types accept multiple files — drag/drop or click to add. Files of the same type are concatenated; duplicate stops are de-duped by transaction_id.")
@@ -66,6 +102,133 @@ def render():
         _run_pipeline(crst_files, sap_files, telemetry_files, m3pl_files, output_name)
     elif not have_crst:
         st.info("Upload at least one CRST file to enable the pipeline.")
+
+
+def _render_sharepoint_load():
+    """List + pull source files from the configured SharePoint folder, then run pipeline."""
+    import tempfile
+    from datascrubb.config import load_config
+    from datascrubb.sharepoint import GraphClient, GraphError, list_source_files, download_source_files
+    from datascrubb.sharepoint.auth import SharepointAuthError, signed_in_account
+
+    cfg = load_config()
+    sp = cfg.sharepoint
+
+    # Sign-in gate
+    try:
+        acct = signed_in_account(sp.tenant_id, sp.client_id)
+    except Exception as e:
+        st.error(f"Auth check failed: {e}")
+        return
+    if not acct:
+        st.warning("Not signed in to SharePoint. Open **Admin → SharePoint** to sign in first.")
+        return
+    st.caption(f"Signed in as **{acct.get('username')}** · site: `{sp.site_url}` · folder: `{sp.source_folder}`")
+
+    if "sp_loaded_classified" not in st.session_state:
+        st.session_state["sp_loaded_classified"] = None
+
+    if st.button("Refresh file list from SharePoint"):
+        try:
+            client = GraphClient(sp.tenant_id, sp.client_id, sp.site_url)
+            classified = list_source_files(client, sp.source_folder)
+            st.session_state["sp_loaded_classified"] = classified
+        except (GraphError, SharepointAuthError) as e:
+            st.error(f"Failed to list SharePoint folder: {e}")
+            return
+
+    classified = st.session_state["sp_loaded_classified"]
+    if not classified:
+        st.info("Click **Refresh file list from SharePoint** to discover files.")
+        return
+
+    # Show what's in the folder + per-source selection
+    st.subheader("1. Files found in SharePoint")
+    selected: dict[str, list[dict]] = {}
+    for source in ("crst", "sap", "telemetry", "m3pl"):
+        items = classified.get(source, [])
+        if not items:
+            st.caption(f"**{source.upper()}**: 0 files")
+            continue
+        names = [it["name"] for it in items]
+        # Default-select all files for the source
+        picks = st.multiselect(
+            f"**{source.upper()}** ({len(items)} found)",
+            options=names,
+            default=names,
+            key=f"sp_pick_{source}",
+        )
+        selected[source] = [it for it in items if it["name"] in picks]
+
+    n_crst = len(selected.get("crst", []))
+    if n_crst == 0:
+        st.warning("Need at least one CRST file selected to run the pipeline.")
+
+    st.markdown("---")
+    st.subheader("2. Run Pipeline")
+    output_name = st.text_input(
+        "Output filename (optional)",
+        placeholder="Trans_KPI_Validation.xlsx",
+        key="sp_output_name",
+    )
+
+    if st.button("Pull selected & Run Pipeline", type="primary", disabled=(n_crst == 0)):
+        try:
+            client = GraphClient(sp.tenant_id, sp.client_id, sp.site_url)
+            with st.spinner("Downloading files from SharePoint..."):
+                with tempfile.TemporaryDirectory() as tmp:
+                    tmp_path = Path(tmp)
+                    source_files = download_source_files(client, selected, tmp_path)
+                    _run_pipeline_from_paths(source_files, output_name)
+        except (GraphError, SharepointAuthError) as e:
+            st.error(f"SharePoint pull failed: {e}")
+        except Exception as e:
+            st.error(f"Pipeline failed: {e}")
+            st.exception(e)
+
+
+def _run_pipeline_from_paths(source_files: dict[str, list[Path]], output_name: str | None) -> None:
+    """Same as _run_pipeline() but accepts Paths directly (already downloaded)."""
+    from datascrubb.pipeline import Pipeline
+
+    if not source_files.get("crst"):
+        st.error("Need at least one CRST file.")
+        return
+
+    progress = st.progress(40, text="Processing pipeline...")
+    try:
+        pipeline = Pipeline()
+        result = pipeline.run(
+            source_files=source_files,
+            export_excel=True,
+            output_filename=output_name if output_name else None,
+        )
+        progress.progress(100, text="Complete!")
+
+        st.success(f"Pipeline completed! Run ID: {result['run_id']}")
+
+        col1, col2, col3, col4, col5 = st.columns(5)
+        col1.metric("Stops", result["stops_final"])
+        col2.metric("Billing Rows", result.get("billing_rows", 0))
+        col3.metric("SAP Match", result["sap_match_rate"])
+        col4.metric("Telemetry", result["telemetry_coverage"])
+        col5.metric("M3PL Match", result.get("m3pl_match_rate", "0%"))
+
+        if result.get("output_path"):
+            st.info(f"Excel output: `{result['output_path']}`")
+
+        if result["errors_total"] > 0:
+            st.subheader("Error Summary")
+            ecol1, ecol2, ecol3 = st.columns(3)
+            ecol1.metric("Hard Errors", result["errors_hard"])
+            ecol2.metric("Soft Errors", result["errors_soft"])
+            ecol3.metric("Warnings", result["errors_warning"])
+            if result["errors_hard"] > 0:
+                st.error("Hard errors detected! Review the Validation Report page.")
+    except Exception as e:
+        progress.progress(100, text="Failed")
+        st.error(f"Pipeline failed: {e}")
+        st.exception(e)
 
 
 def _run_pipeline(crst_files, sap_files, telemetry_files, m3pl_files, output_name):

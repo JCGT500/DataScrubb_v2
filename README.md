@@ -17,7 +17,8 @@ Transportation data integration & analytics for plasma / refrigerated freight op
 5. [Running the dashboard](#running-the-dashboard)
 6. [Dashboard pages](#dashboard-pages)
 7. [Customer rate matrix](#customer-rate-matrix)
-8. [Data model](#data-model)
+8. [SharePoint setup](#sharepoint-setup-5-minutes)
+9. [Data model](#data-model)
 9. [Outputs](#outputs)
 10. [Validation rules](#validation-rules)
 11. [Troubleshooting](#troubleshooting)
@@ -294,6 +295,49 @@ customers:
 After editing, **re-run the pipeline** (Load Data → Run) to recompute revenue and margin.
 
 For the **revenue formula** see [LOGIC.md → Customer Revenue](LOGIC.md#customer-revenue).
+
+---
+
+## SharePoint setup (5 minutes)
+
+Optional. When enabled, DataScrubb can:
+
+- **Pull** weekly source files (CRST, SAP, telemetry, M3PL) from a shared SharePoint folder instead of asking you to drag-and-drop them every week.
+- **Push** the SQLite DB (and the Excel export) to SharePoint as a snapshot after every successful pipeline run, with retention.
+
+### One-time Azure AD app registration
+
+1. Go to <https://portal.azure.com> → **Azure Active Directory** → **App registrations** → **+ New registration**.
+2. Name: `DataScrubb`. Supported account types: **Accounts in this organizational directory only**. Redirect URI: leave blank. Click **Register**.
+3. On the new app's **API permissions** page → **+ Add a permission** → **Microsoft Graph** → **Delegated permissions** and add:
+   - `Files.ReadWrite.All`
+   - `Sites.ReadWrite.All`
+   - `User.Read`
+   Click **Grant admin consent for <your org>** if you have rights, otherwise it will prompt the first time you sign in.
+4. Copy the **Application (client) ID** and **Directory (tenant) ID** from the app overview page.
+
+No client secret is needed — DataScrubb uses the **device code flow** (public client).
+
+### Configure DataScrubb
+
+1. Boot Streamlit, go to **Admin → SharePoint** tab.
+2. Paste **Tenant ID**, **Client ID**, and **Site URL** (e.g. `https://contoso.sharepoint.com/sites/datascrubb`).
+3. Set **Source folder** and **DB backup folder** (drive-relative paths, e.g. `Shared Documents/DataScrubb/Sources`).
+4. Toggle **Enable SharePoint integration** on, click **Save changes**.
+5. Click **Sign in**. A device code appears — open <https://microsoft.com/devicelogin> in any browser, paste the code, sign in with your M365 account.
+6. Click **Complete sign-in**, then **Test connection** to verify.
+
+The refresh token is cached at `~/.datascrubb/msal_cache.bin` and lasts ~90 days — you only sign in once per machine.
+
+### Using it
+
+- **Load Data** page now shows a **Source: Local upload | SharePoint folder** toggle. Pick SharePoint, click **Refresh file list**, select files, click **Pull selected & Run Pipeline**.
+- After every successful pipeline run, the DB is pushed to the backup folder as `datascrubb_<run_id>.db`. Older backups beyond `keep_last_n_backups` are deleted.
+- **Restore** from a backup via Admin → SharePoint → Manual sync (gated behind a confirmation prompt — overwrites local DB).
+
+### Failure modes
+
+If a SharePoint upload fails after a pipeline run, the run **still succeeds** — only a warning is logged. The local DB is always the source of truth; SharePoint is a backup destination.
 
 ---
 

@@ -118,6 +118,14 @@ TAB_BLOCKS = {
             "default_baseline_evap_delta", "default_baseline_compliance_pct",
         ],
     },
+    "SharePoint": {
+        "yaml_block": "sharepoint",
+        "keys": [
+            "enabled", "tenant_id", "client_id", "site_url",
+            "source_folder", "db_backup_folder",
+            "auto_push_db", "auto_push_excel", "keep_last_n_backups",
+        ],
+    },
     "Warehouse Inclusion": {
         "yaml_block": "warehouse_inclusion",
         "keys": [
@@ -201,6 +209,14 @@ DEFAULTS = {
         "band_orange_max": 74, "band_red_max": 99,
         "baseline_window_days": 30, "baseline_min_clean_days": 7,
         "default_baseline_evap_delta": -6.5, "default_baseline_compliance_pct": 90,
+    },
+    "sharepoint": {
+        "enabled": False,
+        "tenant_id": "", "client_id": "", "site_url": "",
+        "source_folder": "Shared Documents/DataScrubb/Sources",
+        "db_backup_folder": "Shared Documents/DataScrubb/Backups",
+        "auto_push_db": True, "auto_push_excel": True,
+        "keep_last_n_backups": 12,
     },
     "warehouse_inclusion": {
         "otp": False, "dwell": False, "customer_scorecard": False,

@@ -1,6 +1,9 @@
 # Editor / agent metadata
 .claude/
 
+# SharePoint / MSAL token cache (per-user, never commit)
+.datascrubb/
+
 # Database
 *.db
 *.db-wal

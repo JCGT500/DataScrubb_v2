@@ -130,6 +130,7 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 2em 0; }
 <li><a href="#running-the-dashboard">Running the dashboard</a></li>
 <li><a href="#dashboard-pages">Dashboard pages</a></li>
 <li><a href="#customer-rate-matrix">Customer rate matrix</a></li>
+<li><a href="#sharepoint-setup-5-minutes">SharePoint setup</a></li>
 <li><a href="#data-model">Data model</a></li>
 <li><a href="#outputs">Outputs</a></li>
 <li><a href="#validation-rules">Validation rules</a></li>
@@ -553,6 +554,43 @@ customers:
 </ol>
 <p>After editing, <strong>re-run the pipeline</strong> (Load Data → Run) to recompute revenue and margin.</p>
 <p>For the <strong>revenue formula</strong> see <a href="LOGIC.md#customer-revenue">LOGIC.md → Customer Revenue</a>.</p>
+<hr>
+<h2 id="sharepoint-setup-5-minutes">SharePoint setup (5 minutes)</h2>
+<p>Optional. When enabled, DataScrubb can:</p>
+<ul>
+<li><strong>Pull</strong> weekly source files (CRST, SAP, telemetry, M3PL) from a shared SharePoint folder instead of asking you to drag-and-drop them every week.</li>
+<li><strong>Push</strong> the SQLite DB (and the Excel export) to SharePoint as a snapshot after every successful pipeline run, with retention.</li>
+</ul>
+<h3 id="one-time-azure-ad-app-registration">One-time Azure AD app registration</h3>
+<ol>
+<li>Go to <a href="https://portal.azure.com">https://portal.azure.com</a> → <strong>Azure Active Directory</strong> → <strong>App registrations</strong> → <strong>+ New registration</strong>.</li>
+<li>Name: <code>DataScrubb</code>. Supported account types: <strong>Accounts in this organizational directory only</strong>. Redirect URI: leave blank. Click <strong>Register</strong>.</li>
+<li>On the new app's <strong>API permissions</strong> page → <strong>+ Add a permission</strong> → <strong>Microsoft Graph</strong> → <strong>Delegated permissions</strong> and add:
+   - <code>Files.ReadWrite.All</code>
+   - <code>Sites.ReadWrite.All</code>
+   - <code>User.Read</code>
+   Click <strong>Grant admin consent for <your org></strong> if you have rights, otherwise it will prompt the first time you sign in.</li>
+<li>Copy the <strong>Application (client) ID</strong> and <strong>Directory (tenant) ID</strong> from the app overview page.</li>
+</ol>
+<p>No client secret is needed — DataScrubb uses the <strong>device code flow</strong> (public client).</p>
+<h3 id="configure-datascrubb">Configure DataScrubb</h3>
+<ol>
+<li>Boot Streamlit, go to <strong>Admin → SharePoint</strong> tab.</li>
+<li>Paste <strong>Tenant ID</strong>, <strong>Client ID</strong>, and <strong>Site URL</strong> (e.g. <code>https://contoso.sharepoint.com/sites/datascrubb</code>).</li>
+<li>Set <strong>Source folder</strong> and <strong>DB backup folder</strong> (drive-relative paths, e.g. <code>Shared Documents/DataScrubb/Sources</code>).</li>
+<li>Toggle <strong>Enable SharePoint integration</strong> on, click <strong>Save changes</strong>.</li>
+<li>Click <strong>Sign in</strong>. A device code appears — open <a href="https://microsoft.com/devicelogin">https://microsoft.com/devicelogin</a> in any browser, paste the code, sign in with your M365 account.</li>
+<li>Click <strong>Complete sign-in</strong>, then <strong>Test connection</strong> to verify.</li>
+</ol>
+<p>The refresh token is cached at <code>~/.datascrubb/msal_cache.bin</code> and lasts ~90 days — you only sign in once per machine.</p>
+<h3 id="using-it">Using it</h3>
+<ul>
+<li><strong>Load Data</strong> page now shows a <strong>Source: Local upload | SharePoint folder</strong> toggle. Pick SharePoint, click <strong>Refresh file list</strong>, select files, click <strong>Pull selected &amp; Run Pipeline</strong>.</li>
+<li>After every successful pipeline run, the DB is pushed to the backup folder as <code>datascrubb_&lt;run_id&gt;.db</code>. Older backups beyond <code>keep_last_n_backups</code> are deleted.</li>
+<li><strong>Restore</strong> from a backup via Admin → SharePoint → Manual sync (gated behind a confirmation prompt — overwrites local DB).</li>
+</ul>
+<h3 id="failure-modes">Failure modes</h3>
+<p>If a SharePoint upload fails after a pipeline run, the run <strong>still succeeds</strong> — only a warning is logged. The local DB is always the source of truth; SharePoint is a backup destination.</p>
 <hr>
 <h2 id="data-model">Data model</h2>
 <p>SQLite database at <code>data/datascrubb.db</code>. WAL mode, foreign keys ON.</p>

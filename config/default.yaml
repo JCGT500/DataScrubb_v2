@@ -124,6 +124,17 @@ warehouse_inclusion:
   alarm_log:               true
   route_reefer_cost:       true
 
+sharepoint:
+  enabled: false
+  tenant_id: ""
+  client_id: ""
+  site_url: ""                                                # e.g. https://contoso.sharepoint.com/sites/datascrubb
+  source_folder: "Shared Documents/DataScrubb/Sources"        # where weekly source files live
+  db_backup_folder: "Shared Documents/DataScrubb/Backups"     # where DB snapshots are pushed after each run
+  auto_push_db: true                                          # upload data/datascrubb.db after every successful pipeline run
+  auto_push_excel: true                                       # also upload the Trans_KPI_Validation_<runid>.xlsx
+  keep_last_n_backups: 12                                     # delete older backups; set 0 to keep all
+
 logging:
   level: INFO
   file: logs/pipeline.log

@@ -412,6 +412,14 @@ class Pipeline:
 
             logger.info("Pipeline run %s completed successfully", run_id)
 
+            # Optional: push DB (and Excel) to SharePoint as backup. Wrapped so
+            # an upload failure can never fail an otherwise-successful run.
+            if cfg.sharepoint.enabled:
+                try:
+                    self._push_to_sharepoint(cfg, engine.url.database, output_path, run_id)
+                except Exception as sp_exc:  # noqa: BLE001
+                    logger.warning("SharePoint backup push failed (run still SUCCESS): %s", sp_exc)
+
             return {
                 "run_id": run_id,
                 "status": "SUCCESS",
@@ -447,6 +455,30 @@ class Pipeline:
                 logger.error("Failed to persist error run record", exc_info=True)
 
             raise
+
+    def _push_to_sharepoint(self, cfg, db_path_str, output_path, run_id: str) -> None:
+        """Push DB (and optionally Excel) to SharePoint after a successful run.
+
+        Apply backup retention. All errors propagate up to the caller, which
+        wraps in try/except so the pipeline run remains SUCCESS regardless.
+        """
+        from datascrubb.sharepoint import (
+            GraphClient,
+            apply_backup_retention,
+            push_db_backup,
+            push_excel_backup,
+        )
+
+        sp = cfg.sharepoint
+        client = GraphClient(sp.tenant_id, sp.client_id, sp.site_url)
+
+        if sp.auto_push_db and db_path_str:
+            db_path = Path(db_path_str)
+            push_db_backup(client, db_path, sp.db_backup_folder, run_id=run_id)
+            apply_backup_retention(client, sp.db_backup_folder, sp.keep_last_n_backups)
+
+        if sp.auto_push_excel and output_path:
+            push_excel_backup(client, Path(output_path), sp.db_backup_folder)
 
     def _persist_kpi(self, engine, results) -> None:
         """Write KPI rollup tables to SQLite via pandas to_sql (replace each run).
