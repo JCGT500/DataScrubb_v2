@@ -3,10 +3,17 @@ sitting in the project root.
 
 Usage from a terminal:
     .venv/Scripts/python.exe run_pipeline.py
+    .venv/Scripts/python.exe run_pipeline.py --no-reuse-cached
 
 Or hit F5 in VS Code with the "Pipeline: ..." launch configuration.
+
+Behavior: any source whose glob matches no file in the project root is
+reused from the SQLite DB (the most recent run's data). Pass
+``--no-reuse-cached`` to disable that — sources without files will produce
+NaN/zero downstream (matches the historical behavior).
 """
 
+import argparse
 from pathlib import Path
 
 from datascrubb.pipeline import Pipeline
@@ -24,6 +31,15 @@ def _all_matches(pattern: str) -> list[Path]:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Run the DataScrubb pipeline against files in the project root.")
+    parser.add_argument(
+        "--no-reuse-cached",
+        action="store_true",
+        help="Disable DB fallback for sources with no matching file. Strict from-scratch run.",
+    )
+    args = parser.parse_args()
+    reuse_cached = not args.no_reuse_cached
+
     sources: dict = {}
 
     crst_files = _all_matches("CRST data*.xlsx")
@@ -54,7 +70,17 @@ def main() -> None:
         else:
             print(f"  {k}: {v.name}")
 
-    result = Pipeline().run(source_files=sources, export_excel=True)
+    # Note any optional sources that will be reused from the DB
+    if reuse_cached:
+        for src in ("sap", "telemetry", "m3pl"):
+            if src not in sources:
+                print(f"  {src}: no file in project root, will reuse cached DB data")
+    else:
+        for src in ("sap", "telemetry", "m3pl"):
+            if src not in sources:
+                print(f"  {src}: no file in project root, --no-reuse-cached → will be missing")
+
+    result = Pipeline().run(source_files=sources, export_excel=True, reuse_cached=reuse_cached)
 
     print()
     print("=" * 60)

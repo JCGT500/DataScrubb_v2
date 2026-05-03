@@ -129,21 +129,24 @@ The `m3pl` source accepts a list of files — `run_pipeline.py` auto-discovers a
 
 ## Running the pipeline
 
+> **Cached fallback (default ON):** sources you don't upload (or, on the CLI, don't have files for) are reused from the SQLite DB — the most recent run's data. So you can refresh just CRST week-over-week without losing your M3PL/SAP/telemetry. The dashboard shows what's in the DB above each uploader and labels reused metrics in the result panel; pass `--no-reuse-cached` (CLI) or tick **Force fresh rebuild** (dashboard) to disable.
+
 ### From the dashboard (recommended for analysts)
 
 1. Start Streamlit: `.venv/Scripts/python.exe -m streamlit run dashboard/app.py`
 2. Go to **Load Data**.
-3. Upload the CRST file (required) and any of SAP / Telemetry / M3PL (multiple M3PL files OK).
+3. Upload the CRST file (required) and any of SAP / Telemetry / M3PL — leave a source empty to **reuse** what's already in the DB. Each uploader shows the current DB row count + last-run timestamp.
 4. Click **Run Pipeline**. ~90 seconds for a typical month's data.
-5. Result metrics appear at the top; Excel output is written to `output/`. Every other page now reads from the populated SQLite DB.
+5. Result metrics appear at the top — reused sources are labeled `(reused)`. Excel output is written to `output/`.
 
 ### From the command line
 
 ```bash
 .venv/Scripts/python.exe run_pipeline.py
+.venv/Scripts/python.exe run_pipeline.py --no-reuse-cached
 ```
 
-`run_pipeline.py` discovers any matching data files in the project root and runs everything end-to-end, then prints a summary.
+`run_pipeline.py` discovers any matching data files in the project root and runs everything end-to-end. Sources without a matching file are reused from the DB unless you pass `--no-reuse-cached`.
 
 ### From Python
 

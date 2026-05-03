@@ -261,7 +261,8 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 2em 0; }
 4. Aggregate per <code>transaction_id</code> (see <a href="#telemetry-stop-aggregations">Telemetry stop aggregations</a>).</p>
 <p><strong>Coverage:</strong> <code>unique_transaction_ids_with_telemetry / unique_transaction_ids_in_crst</code>.</p>
 <p><strong>Override:</strong> <code>config/default.yaml::pipeline.telemetry_window_minutes</code>.</p>
-<p><strong>Code:</strong> <code>datascrubb/matching/telemetry_matcher.py::match_telemetry_to_crst</code> · <strong>Table:</strong> <code>telemetry_stop</code></p>
+<p><strong>Cached fallback</strong> (when raw telemetry isn't uploaded but <code>Pipeline.run(reuse_cached=True)</code>): the previously-persisted <code>telemetry_stop</code> aggregations are read from SQLite and <strong>left-joined to the current CRST by <code>transaction_id</code></strong>. The matching step is skipped entirely. Stops with new transaction_ids that aren't in the cache get NaN telemetry fields (same effect as those stops having no telemetry coverage in a normal run). Coverage is reported against the cache.</p>
+<p><strong>Code:</strong> <code>datascrubb/matching/telemetry_matcher.py::match_telemetry_to_crst</code> · <strong>Cached path:</strong> <code>datascrubb/matching/engine.py::MatchingEngine.run</code> (telemetry branch when <code>cached_telemetry_stop</code> provided) · <strong>Table:</strong> <code>telemetry_stop</code></p>
 <hr>
 <h3 id="m3pl-crst">M3PL → CRST</h3>
 <p><strong>Answers:</strong> "Which M3PL billing PRO# corresponds to which CRST route?"</p>

@@ -175,7 +175,9 @@ Four metrics, all stop-level.
 
 **Override:** `config/default.yaml::pipeline.telemetry_window_minutes`.
 
-**Code:** `datascrubb/matching/telemetry_matcher.py::match_telemetry_to_crst` · **Table:** `telemetry_stop`
+**Cached fallback** (when raw telemetry isn't uploaded but `Pipeline.run(reuse_cached=True)`): the previously-persisted `telemetry_stop` aggregations are read from SQLite and **left-joined to the current CRST by `transaction_id`**. The matching step is skipped entirely. Stops with new transaction_ids that aren't in the cache get NaN telemetry fields (same effect as those stops having no telemetry coverage in a normal run). Coverage is reported against the cache.
+
+**Code:** `datascrubb/matching/telemetry_matcher.py::match_telemetry_to_crst` · **Cached path:** `datascrubb/matching/engine.py::MatchingEngine.run` (telemetry branch when `cached_telemetry_stop` provided) · **Table:** `telemetry_stop`
 
 ---
 

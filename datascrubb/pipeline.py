@@ -77,6 +77,7 @@ class Pipeline:
         source_files: dict[str, str | Path],
         export_excel: bool = True,
         output_filename: str | None = None,
+        reuse_cached: bool = True,
     ) -> dict:
         """Run the full pipeline.
 
@@ -87,6 +88,12 @@ class Pipeline:
                           single path or a list of weekly invoice files).
             export_excel: Whether to export results to Excel.
             output_filename: Custom output filename. Defaults to timestamped name.
+            reuse_cached: When True (default), any optional source NOT in
+                          ``source_files`` falls back to the corresponding
+                          previously-persisted SQLite table (sap_segment,
+                          billing_snapshot, telemetry_stop). Set False to
+                          force a strict from-scratch run that produces
+                          NaN/zero downstream when sources are missing.
 
         Returns:
             dict with run_id, output_path, stats, and errors.
@@ -200,6 +207,45 @@ class Pipeline:
                         len(m3pl_df), len(m3pl_paths),
                     )
 
+            # ─── Step 1b: Reuse cached sources for anything not uploaded ───
+            # The DB is the source of truth; uploads refresh slices. If the
+            # caller didn't provide a source, fall back to whatever's in
+            # SQLite so a partial re-run doesn't wipe the rest of the data.
+            cached_sap_segment = None
+            cached_telemetry_stop = None
+            sources_used = {k: "fresh" for k in source_files}
+            if reuse_cached:
+                from datascrubb.db_cache import (
+                    read_cached_m3pl,
+                    read_cached_sap,
+                    read_cached_telemetry_stop,
+                )
+                if "sap" not in source_files:
+                    cached_sap_segment = read_cached_sap(engine)
+                    if cached_sap_segment is not None:
+                        sources_used["sap"] = f"cached ({len(cached_sap_segment)} rows)"
+                        logger.info(
+                            "SAP: no upload provided, will reuse %d cached segments from previous run",
+                            len(cached_sap_segment),
+                        )
+                if "m3pl" not in source_files:
+                    cached_m3pl = read_cached_m3pl(engine)
+                    if cached_m3pl is not None:
+                        m3pl_df = cached_m3pl
+                        sources_used["m3pl"] = f"cached ({len(cached_m3pl)} rows)"
+                        logger.info(
+                            "M3PL: no upload provided, will reuse %d cached billing rows from previous run",
+                            len(cached_m3pl),
+                        )
+                if "telemetry" not in source_files:
+                    cached_telemetry_stop = read_cached_telemetry_stop(engine)
+                    if cached_telemetry_stop is not None:
+                        sources_used["telemetry"] = f"cached ({len(cached_telemetry_stop)} aggregations)"
+                        logger.info(
+                            "Telemetry: no upload provided, will reuse %d cached stop aggregations from previous run",
+                            len(cached_telemetry_stop),
+                        )
+
             # ─── Step 2: Calculate OTP on CRST ───
             crst_df = calculate_otp(crst_df, self.config.pipeline.otp_tolerance_minutes)
 
@@ -208,7 +254,11 @@ class Pipeline:
 
             # ─── Step 3: Run cross-source matching ───
             matching_engine = MatchingEngine(self.config.pipeline, full_config=self.config)
-            results = matching_engine.run(crst_df, sap_df, telemetry_df, m3pl_df)
+            results = matching_engine.run(
+                crst_df, sap_df, telemetry_df, m3pl_df,
+                cached_sap_segment=cached_sap_segment,
+                cached_telemetry_stop=cached_telemetry_stop,
+            )
 
             # ─── Step 4: Compute route-level KPIs (before validation so KPI-derived rules can fire) ───
             cfg = self.config
@@ -425,6 +475,7 @@ class Pipeline:
                 "status": "SUCCESS",
                 "output_path": str(output_path) if output_path else None,
                 "records_read": records_read,
+                "sources_used": sources_used,
                 "stops_final": len(results.crst),
                 "billing_rows": int(0 if results.m3pl is None else len(results.m3pl)),
                 "sap_match_rate": f"{results.sap_match_rate:.2%}",

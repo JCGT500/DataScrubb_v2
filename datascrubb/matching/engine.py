@@ -67,8 +67,19 @@ class MatchingEngine:
         sap_df: pd.DataFrame | None = None,
         telemetry_df: pd.DataFrame | None = None,
         m3pl_df: pd.DataFrame | None = None,
+        cached_sap_segment: pd.DataFrame | None = None,
+        cached_telemetry_stop: pd.DataFrame | None = None,
     ) -> MatchResults:
-        """Run all matching and return consolidated results."""
+        """Run all matching and return consolidated results.
+
+        ``sap_df`` / ``telemetry_df`` are raw adapter outputs that get matched
+        fresh. ``cached_sap_segment`` / ``cached_telemetry_stop`` are
+        previously-persisted matcher outputs from a prior run; when supplied
+        AND the corresponding raw input is missing, the matcher is skipped
+        and the cached result is used directly (joined to current CRST by
+        ``transaction_id``). Fresh raw inputs always take precedence over
+        cached.
+        """
         results = MatchResults(crst=crst_df.copy())
 
         # SAP matching
@@ -80,6 +91,26 @@ class MatchingEngine:
             matched = (results.sap_segment["sap_match_flag"] == "MATCHED").sum()
             results.sap_match_rate = matched / len(sap_df) if len(sap_df) > 0 else 0
             logger.info("SAP match rate: %.1f%%", results.sap_match_rate * 100)
+        elif cached_sap_segment is not None and not cached_sap_segment.empty:
+            crst_txns = set(crst_df["transaction_id"].astype(str))
+            kept = cached_sap_segment[
+                cached_sap_segment["transaction_id"].astype(str).isin(crst_txns)
+            ].copy()
+            # Persistence-only columns shouldn't ride along to the upsert step
+            for col in ("id", "created_at"):
+                if col in kept.columns:
+                    kept = kept.drop(columns=[col])
+            # SQLite stores datetimes as strings; coerce back so the ORM accepts them
+            if "arrive" in kept.columns:
+                kept["arrive"] = pd.to_datetime(kept["arrive"], errors="coerce")
+            results.sap_segment = kept
+            matched = (kept["sap_match_flag"] == "MATCHED").sum() if "sap_match_flag" in kept.columns else len(kept)
+            # match-rate denominator is unknown without raw SAP; report against cached count
+            results.sap_match_rate = matched / len(cached_sap_segment) if len(cached_sap_segment) > 0 else 0
+            logger.info(
+                "SAP: reusing %d cached segments (%d still align with current CRST)",
+                len(cached_sap_segment), len(kept),
+            )
 
         # Telemetry matching
         if telemetry_df is not None and not telemetry_df.empty:
@@ -106,6 +137,25 @@ class MatchingEngine:
                 total_stops = crst_df["transaction_id"].nunique()
                 results.telemetry_coverage = stops_with_telem / total_stops if total_stops > 0 else 0
                 logger.info("Telemetry coverage: %.1f%%", results.telemetry_coverage * 100)
+        elif cached_telemetry_stop is not None and not cached_telemetry_stop.empty:
+            crst_txns = set(crst_df["transaction_id"].astype(str))
+            kept = cached_telemetry_stop[
+                cached_telemetry_stop["transaction_id"].astype(str).isin(crst_txns)
+            ].copy()
+            # `created_at` is a persistence artifact, not a telemetry field
+            if "created_at" in kept.columns:
+                kept = kept.drop(columns=["created_at"])
+            results.telemetry_stop = kept
+            if not kept.empty:
+                results.crst = results.crst.merge(kept, on="transaction_id", how="left")
+                stops_with_telem = kept["transaction_id"].nunique()
+                total_stops = crst_df["transaction_id"].nunique()
+                results.telemetry_coverage = stops_with_telem / total_stops if total_stops > 0 else 0
+            new_stops = len(crst_df) - len(kept)
+            logger.info(
+                "Telemetry: reusing %d cached stop aggregations (%d current CRST stops have no telemetry coverage)",
+                len(kept), max(new_stops, 0),
+            )
 
         # M3PL billing — no per-stop matching; carry the snapshot through.
         # Match rate = fraction of M3PL PROs that are present in CRST as order_#.

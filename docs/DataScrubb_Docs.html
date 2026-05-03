@@ -393,18 +393,22 @@ streamlit run dashboard/app.py
 <p>The <code>m3pl</code> source accepts a list of files — <code>run_pipeline.py</code> auto-discovers all matching <code>Backup *M3PL*.xlsx</code> files in the project root.</p>
 <hr>
 <h2 id="running-the-pipeline">Running the pipeline</h2>
+<blockquote>
+<p><strong>Cached fallback (default ON):</strong> sources you don't upload (or, on the CLI, don't have files for) are reused from the SQLite DB — the most recent run's data. So you can refresh just CRST week-over-week without losing your M3PL/SAP/telemetry. The dashboard shows what's in the DB above each uploader and labels reused metrics in the result panel; pass <code>--no-reuse-cached</code> (CLI) or tick <strong>Force fresh rebuild</strong> (dashboard) to disable.</p>
+</blockquote>
 <h3 id="from-the-dashboard-recommended-for-analysts">From the dashboard (recommended for analysts)</h3>
 <ol>
 <li>Start Streamlit: <code>.venv/Scripts/python.exe -m streamlit run dashboard/app.py</code></li>
 <li>Go to <strong>Load Data</strong>.</li>
-<li>Upload the CRST file (required) and any of SAP / Telemetry / M3PL (multiple M3PL files OK).</li>
+<li>Upload the CRST file (required) and any of SAP / Telemetry / M3PL — leave a source empty to <strong>reuse</strong> what's already in the DB. Each uploader shows the current DB row count + last-run timestamp.</li>
 <li>Click <strong>Run Pipeline</strong>. ~90 seconds for a typical month's data.</li>
-<li>Result metrics appear at the top; Excel output is written to <code>output/</code>. Every other page now reads from the populated SQLite DB.</li>
+<li>Result metrics appear at the top — reused sources are labeled <code>(reused)</code>. Excel output is written to <code>output/</code>.</li>
 </ol>
 <h3 id="from-the-command-line">From the command line</h3>
 <pre><code class="language-bash">.venv/Scripts/python.exe run_pipeline.py
+.venv/Scripts/python.exe run_pipeline.py --no-reuse-cached
 </code></pre>
-<p><code>run_pipeline.py</code> discovers any matching data files in the project root and runs everything end-to-end, then prints a summary.</p>
+<p><code>run_pipeline.py</code> discovers any matching data files in the project root and runs everything end-to-end. Sources without a matching file are reused from the DB unless you pass <code>--no-reuse-cached</code>.</p>
 <h3 id="from-python">From Python</h3>
 <pre><code class="language-python">from datascrubb.pipeline import Pipeline
 

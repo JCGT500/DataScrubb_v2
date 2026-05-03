@@ -55,13 +55,53 @@ def _sharepoint_available() -> bool:
         return False
 
 
+@st.cache_data(ttl=10, show_spinner=False)
+def _db_status() -> dict:
+    """Cached DB-source status (10s TTL)."""
+    try:
+        from datascrubb.config import load_config
+        from datascrubb.db import get_engine
+        from datascrubb.db_cache import db_source_status
+        cfg = load_config()
+        return db_source_status(get_engine(cfg.db_path))
+    except Exception:
+        return {}
+
+
+def _hint(source: str, status: dict, friendly: str) -> str:
+    """Render a one-line 'DB has N rows from <ts>' hint for a source."""
+    info = status.get(source) or {}
+    rows = int(info.get("rows", 0) or 0)
+    ts = info.get("last_run_ts")
+    if rows == 0:
+        return f"ⓘ DB has no cached {friendly} yet."
+    if ts:
+        return f"ⓘ DB has {rows:,} cached {friendly} (last run: {ts[:19]})."
+    return f"ⓘ DB has {rows:,} cached {friendly}."
+
+
 def _render_local_upload():
     st.subheader("1. Upload Source Files")
 
-    st.caption("All file types accept multiple files — drag/drop or click to add. Files of the same type are concatenated; duplicate stops are de-duped by transaction_id.")
+    status = _db_status()
+
+    st.caption(
+        "All file types accept multiple files — drag/drop or click to add. "
+        "**Anything you don't upload is reused from the SQLite DB** (the most "
+        "recent run's data). Tick **Force fresh rebuild** below to disable that."
+    )
+
+    force_fresh = st.checkbox(
+        "Force fresh rebuild (ignore cached DB data for sources you don't upload)",
+        value=False,
+        help="Strict from-scratch run. Sources you don't upload will produce NaN / zero "
+             "downstream — useful for sanity checks but usually NOT what you want.",
+    )
+
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("**CRST Data** (Required, multiple files allowed)")
+        st.caption(_hint("crst", status, "stops"))
         crst_files = st.file_uploader(
             "Upload one or more CRST Excel files",
             type=["xlsx", "xls"],
@@ -69,7 +109,8 @@ def _render_local_upload():
             key="crst_upload",
         )
 
-        st.markdown("**SAP Data** (Optional, multiple files allowed)")
+        st.markdown("**SAP Data** (Optional)")
+        st.caption(_hint("sap", status, "SAP segments") + " — leave empty to reuse.")
         sap_files = st.file_uploader(
             "Upload one or more SAP Excel files",
             type=["xlsx", "xls"],
@@ -78,7 +119,8 @@ def _render_local_upload():
         )
 
     with col2:
-        st.markdown("**Telemetry Data** (Optional, multiple files allowed)")
+        st.markdown("**Telemetry Data** (Optional)")
+        st.caption(_hint("telemetry", status, "stop telemetry aggregations") + " — leave empty to reuse.")
         telemetry_files = st.file_uploader(
             "Upload one or more Telemetry CSV files",
             type=["csv"],
@@ -86,7 +128,8 @@ def _render_local_upload():
             key="telemetry_upload",
         )
 
-        st.markdown("**M3PL Billing** (Optional, multiple weekly files allowed)")
+        st.markdown("**M3PL Billing** (Optional)")
+        st.caption(_hint("m3pl", status, "billing rows") + " — leave empty to reuse.")
         m3pl_files = st.file_uploader(
             "Upload one or more M3PL Excel invoice files",
             type=["xlsx", "xls"],
@@ -104,7 +147,8 @@ def _render_local_upload():
 
     have_crst = bool(crst_files)
     if st.button("Run Pipeline", type="primary", disabled=not have_crst):
-        _run_pipeline(crst_files, sap_files, telemetry_files, m3pl_files, output_name)
+        _run_pipeline(crst_files, sap_files, telemetry_files, m3pl_files, output_name,
+                      reuse_cached=not force_fresh)
     elif not have_crst:
         st.info("Upload at least one CRST file to enable the pipeline.")
 
@@ -192,7 +236,8 @@ def _render_sharepoint_load():
             st.exception(e)
 
 
-def _run_pipeline_from_paths(source_files: dict[str, list[Path]], output_name: str | None) -> None:
+def _run_pipeline_from_paths(source_files: dict[str, list[Path]], output_name: str | None,
+                              reuse_cached: bool = True) -> None:
     """Same as _run_pipeline() but accepts Paths directly (already downloaded)."""
     from datascrubb.pipeline import Pipeline
 
@@ -207,16 +252,22 @@ def _run_pipeline_from_paths(source_files: dict[str, list[Path]], output_name: s
             source_files=source_files,
             export_excel=True,
             output_filename=output_name if output_name else None,
+            reuse_cached=reuse_cached,
         )
         progress.progress(100, text="Complete!")
 
         st.success(f"Pipeline completed! Run ID: {result['run_id']}")
 
+        used = result.get("sources_used", {})
+        def _label(metric: str, source: str) -> str:
+            tag = used.get(source, "")
+            return f"{metric} (reused)" if tag.startswith("cached") else metric
+
         col1, col2, col3, col4, col5 = st.columns(5)
         col1.metric("Stops", result["stops_final"])
-        col2.metric("Billing Rows", result.get("billing_rows", 0))
-        col3.metric("SAP Match", result["sap_match_rate"])
-        col4.metric("Telemetry", result["telemetry_coverage"])
+        col2.metric(_label("Billing Rows", "m3pl"), result.get("billing_rows", 0))
+        col3.metric(_label("SAP Match", "sap"), result["sap_match_rate"])
+        col4.metric(_label("Telemetry", "telemetry"), result["telemetry_coverage"])
         col5.metric("M3PL Match", result.get("m3pl_match_rate", "0%"))
 
         if result.get("output_path"):
@@ -236,7 +287,7 @@ def _run_pipeline_from_paths(source_files: dict[str, list[Path]], output_name: s
         st.exception(e)
 
 
-def _run_pipeline(crst_files, sap_files, telemetry_files, m3pl_files, output_name):
+def _run_pipeline(crst_files, sap_files, telemetry_files, m3pl_files, output_name, reuse_cached: bool = True):
     """Save uploaded files (one or many per source) to temp dir, then run the pipeline."""
     import tempfile
 
@@ -288,17 +339,34 @@ def _run_pipeline(crst_files, sap_files, telemetry_files, m3pl_files, output_nam
                     source_files=source_files,
                     export_excel=True,
                     output_filename=output_name if output_name else None,
+                    reuse_cached=reuse_cached,
                 )
                 progress.progress(100, text="Complete!")
 
                 st.success(f"Pipeline completed! Run ID: {result['run_id']}")
 
+                used = result.get("sources_used", {})
+                def _label(metric: str, source: str) -> str:
+                    tag = used.get(source, "")
+                    return f"{metric} (reused)" if tag.startswith("cached") else metric
+
                 col1, col2, col3, col4, col5 = st.columns(5)
                 col1.metric("Stops", result["stops_final"])
-                col2.metric("Billing Rows", result.get("billing_rows", 0))
-                col3.metric("SAP Match", result["sap_match_rate"])
-                col4.metric("Telemetry", result["telemetry_coverage"])
+                col2.metric(_label("Billing Rows", "m3pl"), result.get("billing_rows", 0))
+                col3.metric(_label("SAP Match", "sap"), result["sap_match_rate"])
+                col4.metric(_label("Telemetry", "telemetry"), result["telemetry_coverage"])
                 col5.metric("M3PL Match", result.get("m3pl_match_rate", "0%"))
+
+                # Sources-used summary (per-source line)
+                fresh = [s for s, t in used.items() if t == "fresh"]
+                cached = [f"{s} ({t.split('(')[1].rstrip(')')})" for s, t in used.items() if t.startswith("cached")]
+                lines = []
+                if fresh:
+                    lines.append(f"Fresh from upload: {', '.join(fresh)}")
+                if cached:
+                    lines.append(f"Reused from DB: {', '.join(cached)}")
+                if lines:
+                    st.caption(" · ".join(lines))
 
                 if result.get("output_path"):
                     st.info(f"Excel output: `{result['output_path']}`")
