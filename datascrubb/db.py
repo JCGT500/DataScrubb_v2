@@ -206,6 +206,9 @@ def upsert_telemetry_stops(session: Session, df: pd.DataFrame) -> int:
         "alarm_events", "min_battery", "avg_battery",
         "max_engine_hours", "max_total_hours",
         "setpoint_changes", "avg_da_ra_delta",
+        "avg_evap_delta", "min_evap_delta", "max_evap_delta", "da1_present_pct",
+        "setpoint_compliance_pct", "defrost_event_count",
+        "max_cargo_temp", "bulkhead_seal_index",
     ]
     for c in cols:
         if c not in df.columns:

@@ -284,6 +284,26 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 2em 0; }
 <td><code>demand_forecast</code>, Operations Insights page</td>
 </tr>
 <tr>
+<td><strong>Vanguard Cooling Index (VCI)</strong> per trailer</td>
+<td>telemetry DA1/RA1/S1-S6/op_1</td>
+<td><code>trailer_vci</code>, Reefer Diagnostics page</td>
+</tr>
+<tr>
+<td>Per-trailer rolling baselines (evap delta, compliance, defrost)</td>
+<td>telemetry, last 30 days</td>
+<td><code>vanguard_baselines</code></td>
+</tr>
+<tr>
+<td>Reefer readiness check ("can I load frozen plasma?")</td>
+<td>VCI + hot-load detection</td>
+<td><code>trailer_vci.can_load_frozen</code></td>
+</tr>
+<tr>
+<td>Vanguard alerts (positive delta, hot-load, high defrost, bulkhead)</td>
+<td>VCI overrides + thresholds</td>
+<td><code>vanguard_alerts</code>, Reefer Diagnostics page</td>
+</tr>
+<tr>
 <td>Late-stops geographic map</td>
 <td>CRST city/state</td>
 <td>OTP Analysis page (state choropleth + city pins)</td>
@@ -296,14 +316,14 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 2em 0; }
 <tr>
 <td>Multi-sheet Excel export</td>
 <td>All of the above</td>
-<td><code>output/Trans_KPI_Validation_&lt;runid&gt;.xlsx</code> (29 sheets)</td>
+<td><code>output/Trans_KPI_Validation_&lt;runid&gt;.xlsx</code> (32 sheets)</td>
 </tr>
 </tbody>
 </table>
 <hr>
 <h2 id="quick-start">Quick start</h2>
 <h3 id="windows-powershell-or-bash">Windows (PowerShell or bash)</h3>
-<pre><code class="language-bash">git clone https://github.com/JCGT500/datascrubb.git
+<pre><code class="language-bash">git clone https://github.com/JCGT500/DataScrubb_v2.git
 cd datascrubb
 
 python -m venv .venv
@@ -317,7 +337,7 @@ python -m venv .venv
 </code></pre>
 <p>The dashboard opens at <a href="http://localhost:8501">http://localhost:8501</a>. Use the <strong>Load Data</strong> page to upload files and run the pipeline; every other page reads from the resulting SQLite DB.</p>
 <h3 id="mac-linux">Mac / Linux</h3>
-<pre><code class="language-bash">git clone https://github.com/JCGT500/datascrubb.git
+<pre><code class="language-bash">git clone https://github.com/JCGT500/DataScrubb_v2.git
 cd datascrubb
 python3 -m venv .venv
 source .venv/bin/activate
@@ -482,6 +502,8 @@ print(result)
 <p>Composite 0-100 score: 40% OTP + 20% low-late-rate + 20% low-dwell + 20% low-cases-variance, all min-max scaled. Top/bottom 15 bars, score histogram with median line, sortable roster (also by max speed / idle minutes / door-open-while-moving).</p>
 <h3 id="trailer-utilization">Trailer Utilization</h3>
 <p>Per-trailer asset utilization. KPI cards (trailers, period days, avg utilization, total stops/miles), quartile bands. Distribution histogram, bottom-20 by utilization, <strong>Pareto curve</strong> of cumulative miles share, <strong>activity heatmap</strong> (top 50 trailers × date). Sortable detail with health columns: alarms, battery min/avg, engine hours, reefer fuel cost.</p>
+<h3 id="reefer-diagnostics-vanguard">Reefer Diagnostics (Vanguard)</h3>
+<p>Per-trailer <strong>Vanguard Cooling Index (VCI)</strong> for frozen plasma operations. Implements the Vanguard V1 SOP — 0–100 risk score combining four subscores: Refrigeration Health (40%), Defrost &amp; Recovery (20%), Temperature Stability (20%), Airflow / Bulkhead / Heat-Flow (20%) — plus 5 hard overrides (positive evap delta, hot-load incident, low compliance, drift &gt; 3 °C, repeat issue). Bands: GREEN ≤ 24 · YELLOW ≤ 49 · ORANGE ≤ 74 · RED ≤ 99 · CRITICAL = 100. Layout: fleet VCI summary (5 cards by band + cleared-vs-blocked), active alerts table, sortable VCI-by-trailer with color-coded bands, per-trailer drill-down (subscore bar chart, baseline vs current, readiness check). All thresholds tunable in <strong>Admin → Reefer (Vanguard SOP)</strong>. Methodology in <a href="LOGIC.md#vanguard-reefer-diagnostics">LOGIC.md → Vanguard</a>.</p>
 <h3 id="customer-insights">Customer Insights</h3>
 <p>Four tabs:
 - <strong>Scorecard</strong> — per-customer stops / routes / OTP / dwell / claims / excursions / revenue / margin. Stops × OTP scatter colored by margin.
@@ -560,7 +582,7 @@ customers:
 <td><code>telemetry_stop</code></td>
 <td>one row per stop with telemetry</td>
 <td>telemetry + matcher</td>
-<td>transaction_id (PK), 25+ aggregations: temps, doors, speed, idle, fuel, alarms, battery, engine hours, setpoint changes</td>
+<td>transaction_id (PK), 30+ aggregations: temps, doors, speed, idle, fuel, alarms, battery, engine hours, setpoint changes, <strong>avg/min/max evap delta, setpoint compliance %, defrost event count, max cargo temp, bulkhead seal index</strong></td>
 </tr>
 <tr>
 <td><code>billing_snapshot</code></td>
@@ -689,6 +711,24 @@ customers:
 <td>customer, forecast_week, horizon, forecast_stops</td>
 </tr>
 <tr>
+<td><code>vanguard_baselines</code></td>
+<td>one row per trailer</td>
+<td>Vanguard engine</td>
+<td>trailer, baseline_evap_delta, baseline_compliance_pct, baseline_defrost_per_day, baseline_window_days, baseline_source</td>
+</tr>
+<tr>
+<td><code>trailer_vci</code></td>
+<td>one row per trailer (current period)</td>
+<td>Vanguard engine</td>
+<td>trailer, vci, band, can_load_frozen, block_reason, rh_score, dr_score, ts_score, abhf_score, current_evap_delta, baseline_evap_delta, hard_override_applied</td>
+</tr>
+<tr>
+<td><code>vanguard_alerts</code></td>
+<td>one row per active alert per trailer</td>
+<td>Vanguard engine</td>
+<td>trailer, alert_code, severity, evidence, vci_at_trigger</td>
+</tr>
+<tr>
 <td><code>pipeline_run</code></td>
 <td>one row per pipeline execution</td>
 <td>pipeline</td>
@@ -707,7 +747,7 @@ customers:
 <p>Every pipeline run produces:</p>
 <ul>
 <li><strong><code>data/datascrubb.db</code></strong> — SQLite source-of-truth for the dashboard.</li>
-<li><strong><code>output/Trans_KPI_Validation_&lt;runid&gt;.xlsx</code></strong> — 29-sheet Excel: raw inputs + every KPI table above + INFO + ERROR_REFERENCE.</li>
+<li><strong><code>output/Trans_KPI_Validation_&lt;runid&gt;.xlsx</code></strong> — 32-sheet Excel: raw inputs + every KPI table above (incl. <code>VANGUARD_BASELINES</code>, <code>TRAILER_VCI</code>, <code>VANGUARD_ALERTS</code>) + INFO + ERROR_REFERENCE.</li>
 <li><strong><code>logs/pipeline.log</code></strong> — full pipeline log.</li>
 </ul>
 <hr>
@@ -936,7 +976,7 @@ config/
 </code></pre>
 <hr>
 <h2 id="license-contact">License &amp; contact</h2>
-<p>Internal tool. Repo: <a href="https://github.com/JCGT500/datascrubb">https://github.com/JCGT500/datascrubb</a>.</p>
+<p>Internal tool. Repo: <a href="https://github.com/JCGT500/DataScrubb_v2">https://github.com/JCGT500/DataScrubb_v2</a>.</p>
 <p>For metric calculation details, see <strong><a href="LOGIC.md">LOGIC.md</a></strong>.</p>
   </div>
 </body>

@@ -43,6 +43,9 @@ def match_telemetry_to_crst(
         "alarm_events", "min_battery", "avg_battery",
         "max_engine_hours", "max_total_hours",
         "setpoint_changes", "avg_da_ra_delta",
+        "avg_evap_delta", "min_evap_delta", "max_evap_delta", "da1_present_pct",
+        "setpoint_compliance_pct", "defrost_event_count",
+        "max_cargo_temp", "bulkhead_seal_index",
     ]
     if telemetry_df.empty or crst_df.empty:
         logger.warning("Empty input: telemetry=%d, CRST=%d", len(telemetry_df), len(crst_df))
@@ -91,6 +94,28 @@ def match_telemetry_to_crst(
     candidates["_alarm"] = col("unit_alarm_flag", 0).fillna(0).astype(int)
     if "da1" in candidates.columns and "ra1" in candidates.columns:
         candidates["_da_ra_delta"] = candidates["ra1"] - candidates["da1"]
+        # Vanguard SOP convention: evap_delta = DA1 − RA1 (negative for healthy frozen ops).
+        candidates["_evap_delta"] = candidates["da1"] - candidates["ra1"]
+        candidates["_da1_present"] = candidates["da1"].notna().astype(int)
+    # Setpoint compliance per Vanguard SOP: |RA1 − S1| ≤ 1°C
+    if "ra1" in candidates.columns and "s1" in candidates.columns:
+        candidates["_compliance"] = (
+            (candidates["ra1"] - candidates["s1"]).abs() <= 1.0
+        ).astype(int)
+    # Defrost from op_1 column ("Defrost" string)
+    if "op_1" in candidates.columns:
+        candidates["_defrost"] = (
+            candidates["op_1"].astype(str).str.upper().str.contains("DEFROST", na=False)
+        ).astype(int)
+    # Max cargo temp = max of S2..S6 per event (S1 is the setpoint reference probe)
+    cargo_cols = [c for c in ("s2", "s3", "s4", "s5", "s6") if c in candidates.columns]
+    if cargo_cols:
+        candidates["_cargo_max"] = candidates[cargo_cols].max(axis=1)
+    # Bulkhead seal index per event: S4 vs avg(S5, S6) — heat penetration proxy
+    if all(c in candidates.columns for c in ("s4", "s5", "s6")):
+        candidates["_bulkhead_idx"] = candidates["s4"] - (
+            (candidates["s5"] + candidates["s6"]) / 2.0
+        )
 
     grouped = candidates.groupby("transaction_id", as_index=False)
 
@@ -132,6 +157,20 @@ def match_telemetry_to_crst(
         aggs["setpoint_changes"] = ("sp1", lambda s: max(int(s.dropna().nunique()) - 1, 0))
     if "_da_ra_delta" in candidates.columns:
         aggs["avg_da_ra_delta"] = ("_da_ra_delta", "mean")
+    # ─── Vanguard derived per-stop fields ───
+    if "_evap_delta" in candidates.columns:
+        aggs["avg_evap_delta"] = ("_evap_delta", "mean")
+        aggs["min_evap_delta"] = ("_evap_delta", "min")
+        aggs["max_evap_delta"] = ("_evap_delta", "max")
+        aggs["da1_present_pct"] = ("_da1_present", "mean")
+    if "_compliance" in candidates.columns:
+        aggs["setpoint_compliance_pct"] = ("_compliance", "mean")
+    if "_defrost" in candidates.columns:
+        aggs["defrost_event_count"] = ("_defrost", "sum")
+    if "_cargo_max" in candidates.columns:
+        aggs["max_cargo_temp"] = ("_cargo_max", "max")
+    if "_bulkhead_idx" in candidates.columns:
+        aggs["bulkhead_seal_index"] = ("_bulkhead_idx", "mean")
 
     result = grouped.agg(**aggs)
 
@@ -153,6 +192,14 @@ def match_telemetry_to_crst(
     # Drop scratch columns
     result = result.drop(columns=[c for c in ("_idle_events", "_power_on_events", "_avg_fuel_rate_when_on") if c in result.columns])
 
+    # Convert percentage rates (0..1) to percentages (0..100)
+    for c in ("setpoint_compliance_pct", "da1_present_pct"):
+        if c in result.columns:
+            result[c] = (pd.to_numeric(result[c], errors="coerce") * 100).round(1)
+    for c in ("avg_evap_delta", "min_evap_delta", "max_evap_delta",
+              "max_cargo_temp", "bulkhead_seal_index"):
+        if c in result.columns:
+            result[c] = pd.to_numeric(result[c], errors="coerce").round(2)
     # Round numeric columns
     for c in ("avg_speed", "max_speed", "avg_amb_temp", "min_amb_temp", "max_amb_temp",
               "min_s1", "max_s1", "min_tl1", "max_tl1", "avg_tl1",

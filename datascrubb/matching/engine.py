@@ -49,6 +49,9 @@ class MatchResults:
     demand_forecast: pd.DataFrame | None = None
     trailer_revenue_weekly: pd.DataFrame | None = None
     route_revenue_weekly: pd.DataFrame | None = None
+    vanguard_baselines: pd.DataFrame | None = None
+    trailer_vci: pd.DataFrame | None = None
+    vanguard_alerts: pd.DataFrame | None = None
 
 
 class MatchingEngine:

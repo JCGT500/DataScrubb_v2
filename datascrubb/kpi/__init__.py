@@ -14,6 +14,11 @@ from datascrubb.kpi.capacity import (
     load_trailer_capacity,
     save_trailer_capacity,
 )
+from datascrubb.kpi.vanguard import (
+    compute_trailer_vci,
+    compute_unit_baselines,
+    compute_vanguard_alerts,
+)
 from datascrubb.kpi.revenue import (
     compute_route_revenue,
     compute_route_revenue_weekly,
@@ -71,6 +76,9 @@ __all__ = [
     "attach_fill_pct",
     "compute_trailer_revenue_weekly",
     "compute_route_revenue_weekly",
+    "compute_unit_baselines",
+    "compute_trailer_vci",
+    "compute_vanguard_alerts",
     "load_rate_matrix",
     "save_rate_matrix",
     "rate_for",

@@ -57,6 +57,38 @@ map:
   default_max_stops_render: 1500
   default_height_px: 900
 
+vanguard:
+  cargo_max_temp_c: -20
+  # Evap delta (DA1 − RA1) bands per Vanguard SOP
+  evap_delta_healthy_min: -8
+  evap_delta_healthy_max: -5
+  evap_delta_degrading_max: -3
+  evap_delta_significant_max: -1
+  evap_delta_drift_critical_c: 3   # >3°C drift in <48h → minimum VCI 75
+  # Setpoint compliance (RA1 within ±1°C of S1)
+  compliance_band_critical_pct: 75
+  compliance_baseline_target_pct: 92
+  # Defrost cycle expectations (TK timed defrost ~every 4 hours)
+  defrost_baseline_per_day: 6
+  defrost_elevated_per_day: 8
+  defrost_abnormal_per_day: 9
+  defrost_max_duration_min: 40
+  # VCI subscore weights (must sum to 1.0)
+  weight_rh: 0.40
+  weight_dr: 0.20
+  weight_ts: 0.20
+  weight_abhf: 0.20
+  # VCI severity bands
+  band_green_max: 24
+  band_yellow_max: 49
+  band_orange_max: 74
+  band_red_max: 99
+  # Per-unit baseline rolling window
+  baseline_window_days: 30
+  baseline_min_clean_days: 7
+  default_baseline_evap_delta: -6.5
+  default_baseline_compliance_pct: 90
+
 stop_classification:
   # Priority 1: any stop with an S-code is PLASMA_CENTER (regardless of name).
   use_s_code_for_plasma: true

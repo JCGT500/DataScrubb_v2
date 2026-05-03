@@ -57,9 +57,13 @@ Transportation data integration & analytics for plasma / refrigerated freight op
 | Late code root-cause ranking | CRST `late_code` | `late_code_analysis`, Operations Insights page |
 | Detention audit (billable hours per customer) | CRST dwell > 2hr | `detention_audit`, Operations Insights page |
 | 4-week demand forecast per customer | CRST weekly stops | `demand_forecast`, Operations Insights page |
+| **Vanguard Cooling Index (VCI)** per trailer | telemetry DA1/RA1/S1-S6/op_1 | `trailer_vci`, Reefer Diagnostics page |
+| Per-trailer rolling baselines (evap delta, compliance, defrost) | telemetry, last 30 days | `vanguard_baselines` |
+| Reefer readiness check ("can I load frozen plasma?") | VCI + hot-load detection | `trailer_vci.can_load_frozen` |
+| Vanguard alerts (positive delta, hot-load, high defrost, bulkhead) | VCI overrides + thresholds | `vanguard_alerts`, Reefer Diagnostics page |
 | Late-stops geographic map | CRST city/state | OTP Analysis page (state choropleth + city pins) |
 | Heat maps (route×stop temp, day×hour, customer×day) | CRST + telemetry | Telemetry page |
-| Multi-sheet Excel export | All of the above | `output/Trans_KPI_Validation_<runid>.xlsx` (29 sheets) |
+| Multi-sheet Excel export | All of the above | `output/Trans_KPI_Validation_<runid>.xlsx` (32 sheets) |
 
 ---
 
@@ -68,7 +72,7 @@ Transportation data integration & analytics for plasma / refrigerated freight op
 ### Windows (PowerShell or bash)
 
 ```bash
-git clone https://github.com/JCGT500/datascrubb.git
+git clone https://github.com/JCGT500/DataScrubb_v2.git
 cd datascrubb
 
 python -m venv .venv
@@ -86,7 +90,7 @@ The dashboard opens at <http://localhost:8501>. Use the **Load Data** page to up
 ### Mac / Linux
 
 ```bash
-git clone https://github.com/JCGT500/datascrubb.git
+git clone https://github.com/JCGT500/DataScrubb_v2.git
 cd datascrubb
 python3 -m venv .venv
 source .venv/bin/activate
@@ -224,6 +228,9 @@ Composite 0-100 score: 40% OTP + 20% low-late-rate + 20% low-dwell + 20% low-cas
 ### Trailer Utilization
 Per-trailer asset utilization. KPI cards (trailers, period days, avg utilization, total stops/miles), quartile bands. Distribution histogram, bottom-20 by utilization, **Pareto curve** of cumulative miles share, **activity heatmap** (top 50 trailers × date). Sortable detail with health columns: alarms, battery min/avg, engine hours, reefer fuel cost.
 
+### Reefer Diagnostics (Vanguard)
+Per-trailer **Vanguard Cooling Index (VCI)** for frozen plasma operations. Implements the Vanguard V1 SOP — 0–100 risk score combining four subscores: Refrigeration Health (40%), Defrost & Recovery (20%), Temperature Stability (20%), Airflow / Bulkhead / Heat-Flow (20%) — plus 5 hard overrides (positive evap delta, hot-load incident, low compliance, drift > 3 °C, repeat issue). Bands: GREEN ≤ 24 · YELLOW ≤ 49 · ORANGE ≤ 74 · RED ≤ 99 · CRITICAL = 100. Layout: fleet VCI summary (5 cards by band + cleared-vs-blocked), active alerts table, sortable VCI-by-trailer with color-coded bands, per-trailer drill-down (subscore bar chart, baseline vs current, readiness check). All thresholds tunable in **Admin → Reefer (Vanguard SOP)**. Methodology in [LOGIC.md → Vanguard](LOGIC.md#vanguard-reefer-diagnostics).
+
 ### Customer Insights
 Four tabs:
 - **Scorecard** — per-customer stops / routes / OTP / dwell / claims / excursions / revenue / margin. Stops × OTP scatter colored by margin.
@@ -298,7 +305,7 @@ SQLite database at `data/datascrubb.db`. WAL mode, foreign keys ON.
 |---|---|---|---|
 | `stop_master` | one row per physical stop | CRST normalized | transaction_id (PK), order_number, customer, s_code, arrival_date, actual_arrival/departure, dwell_minutes, loaded_at_stop, cases_variance, otp_*, telemetry summary |
 | `sap_segment` | one row per matched SAP segment | SAP + matcher | transaction_id, document_number, segment_number, time_diff_hours, sap_match_flag |
-| `telemetry_stop` | one row per stop with telemetry | telemetry + matcher | transaction_id (PK), 25+ aggregations: temps, doors, speed, idle, fuel, alarms, battery, engine hours, setpoint changes |
+| `telemetry_stop` | one row per stop with telemetry | telemetry + matcher | transaction_id (PK), 30+ aggregations: temps, doors, speed, idle, fuel, alarms, battery, engine hours, setpoint changes, **avg/min/max evap delta, setpoint compliance %, defrost event count, max cargo temp, bulkhead seal index** |
 | `billing_snapshot` | one row per (PRO#, billing week) | M3PL adapter | pro_number + billing_week_end (PK), lane, crst_miles, billed_amount, all rates |
 | `route_kpi` | one row per route | KPI rollup | route_id, stop_count, otp_time_pass_rate, dwell_minutes_avg, route_name |
 | `loaded_miles` | one row per route | KPI rollup | route_id, total_segments, loaded_segments, loaded_pct, total_miles, estimated_loaded_miles, estimated_deadhead_miles |
@@ -320,6 +327,9 @@ SQLite database at `data/datascrubb.db`. WAL mode, foreign keys ON.
 | `late_code_analysis` | one row per late code | KPI rollup | late_code, occurrences, distinct customers/routes/drivers, avg_minutes_late |
 | `detention_audit` | one row per customer | KPI rollup | customer, detention_stops, billable_hours, total_dwell_min |
 | `demand_forecast` | one row per (customer × forecast week) | KPI rollup | customer, forecast_week, horizon, forecast_stops |
+| `vanguard_baselines` | one row per trailer | Vanguard engine | trailer, baseline_evap_delta, baseline_compliance_pct, baseline_defrost_per_day, baseline_window_days, baseline_source |
+| `trailer_vci` | one row per trailer (current period) | Vanguard engine | trailer, vci, band, can_load_frozen, block_reason, rh_score, dr_score, ts_score, abhf_score, current_evap_delta, baseline_evap_delta, hard_override_applied |
+| `vanguard_alerts` | one row per active alert per trailer | Vanguard engine | trailer, alert_code, severity, evidence, vci_at_trigger |
 | `pipeline_run` | one row per pipeline execution | pipeline | run_id, status, source_files (JSON), match_rates (JSON) |
 | `validation_error` | one row per error finding | validation engine | transaction_id, source, error_type, error_reason, run_id |
 
@@ -330,7 +340,7 @@ SQLite database at `data/datascrubb.db`. WAL mode, foreign keys ON.
 Every pipeline run produces:
 
 - **`data/datascrubb.db`** — SQLite source-of-truth for the dashboard.
-- **`output/Trans_KPI_Validation_<runid>.xlsx`** — 29-sheet Excel: raw inputs + every KPI table above + INFO + ERROR_REFERENCE.
+- **`output/Trans_KPI_Validation_<runid>.xlsx`** — 32-sheet Excel: raw inputs + every KPI table above (incl. `VANGUARD_BASELINES`, `TRAILER_VCI`, `VANGUARD_ALERTS`) + INFO + ERROR_REFERENCE.
 - **`logs/pipeline.log`** — full pipeline log.
 
 ---
@@ -516,6 +526,6 @@ config/
 
 ## License & contact
 
-Internal tool. Repo: <https://github.com/JCGT500/datascrubb>.
+Internal tool. Repo: <https://github.com/JCGT500/DataScrubb_v2>.
 
 For metric calculation details, see **[LOGIC.md](LOGIC.md)**.

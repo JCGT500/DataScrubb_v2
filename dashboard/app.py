@@ -44,6 +44,7 @@ NAV_GROUPS = {
     ],
     "🚛 Equipment & People": [
         ("🚛 Trailer Utilization", "trailer_utilization"),
+        ("🛡️ Reefer Diagnostics (Vanguard)", "reefer_diagnostics"),
         ("🧑‍✈️ Driver Scorecard", "driver_scorecard"),
     ],
     "🤝 Customers & Quality": [

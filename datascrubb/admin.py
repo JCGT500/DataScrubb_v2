@@ -102,6 +102,22 @@ TAB_BLOCKS = {
             "default_height_px",
         ],
     },
+    "Reefer (Vanguard SOP)": {
+        "yaml_block": "vanguard",
+        "keys": [
+            "cargo_max_temp_c",
+            "evap_delta_healthy_min", "evap_delta_healthy_max",
+            "evap_delta_degrading_max", "evap_delta_significant_max",
+            "evap_delta_drift_critical_c",
+            "compliance_band_critical_pct", "compliance_baseline_target_pct",
+            "defrost_baseline_per_day", "defrost_elevated_per_day",
+            "defrost_abnormal_per_day", "defrost_max_duration_min",
+            "weight_rh", "weight_dr", "weight_ts", "weight_abhf",
+            "band_green_max", "band_yellow_max", "band_orange_max", "band_red_max",
+            "baseline_window_days", "baseline_min_clean_days",
+            "default_baseline_evap_delta", "default_baseline_compliance_pct",
+        ],
+    },
     "Warehouse Inclusion": {
         "yaml_block": "warehouse_inclusion",
         "keys": [
@@ -171,6 +187,20 @@ DEFAULTS = {
     "map": {
         "default_max_stops_render": 1500,
         "default_height_px": 900,
+    },
+    "vanguard": {
+        "cargo_max_temp_c": -20,
+        "evap_delta_healthy_min": -8, "evap_delta_healthy_max": -5,
+        "evap_delta_degrading_max": -3, "evap_delta_significant_max": -1,
+        "evap_delta_drift_critical_c": 3,
+        "compliance_band_critical_pct": 75, "compliance_baseline_target_pct": 92,
+        "defrost_baseline_per_day": 6, "defrost_elevated_per_day": 8,
+        "defrost_abnormal_per_day": 9, "defrost_max_duration_min": 40,
+        "weight_rh": 0.40, "weight_dr": 0.20, "weight_ts": 0.20, "weight_abhf": 0.20,
+        "band_green_max": 24, "band_yellow_max": 49,
+        "band_orange_max": 74, "band_red_max": 99,
+        "baseline_window_days": 30, "baseline_min_clean_days": 7,
+        "default_baseline_evap_delta": -6.5, "default_baseline_compliance_pct": 90,
     },
     "warehouse_inclusion": {
         "otp": False, "dwell": False, "customer_scorecard": False,

@@ -44,6 +44,9 @@ def export_to_excel(
     demand_forecast: pd.DataFrame | None = None,
     trailer_revenue_weekly: pd.DataFrame | None = None,
     route_revenue_weekly: pd.DataFrame | None = None,
+    vanguard_baselines: pd.DataFrame | None = None,
+    trailer_vci: pd.DataFrame | None = None,
+    vanguard_alerts: pd.DataFrame | None = None,
 ) -> Path:
     """Write all pipeline outputs to a multi-sheet Excel file.
 
@@ -102,6 +105,9 @@ def export_to_excel(
             ("DEMAND_FORECAST", demand_forecast),
             ("TRAILER_REVENUE_WEEKLY", trailer_revenue_weekly),
             ("ROUTE_REVENUE_WEEKLY", route_revenue_weekly),
+            ("VANGUARD_BASELINES", vanguard_baselines),
+            ("TRAILER_VCI", trailer_vci),
+            ("VANGUARD_ALERTS", vanguard_alerts),
         ]:
             if frame is not None and not frame.empty:
                 frame.to_excel(writer, sheet_name=name, index=False)

@@ -148,6 +148,10 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 2em 0; }
 <li><a href="#operations">Operations</a>
    - Cycle time · Late code analysis · Detention audit · Demand forecast</li>
 <li><a href="#equipment-utilization">Equipment utilization</a></li>
+<li><a href="#vanguard-reefer-diagnostics">Vanguard Reefer Diagnostics</a><ul>
+<li>Per-stop derived fields · Per-trailer baselines · VCI subscores · Hard overrides · Alert codes</li>
+</ul>
+</li>
 <li><a href="#validation-rules">Validation rules</a></li>
 <li><a href="#defaults--thresholds">Defaults &amp; thresholds</a></li>
 </ol>
@@ -819,6 +823,246 @@ margin_pct     = margin / revenue × 100
 </tbody>
 </table>
 <p><strong>Code:</strong> <code>datascrubb/kpi/route_kpi.py::compute_equipment_util</code> · <strong>Tables:</strong> <code>equip_util_tractor</code>, <code>equip_util_trailer</code>, <code>equip_util_driver</code> · <strong>Page:</strong> Route KPIs (Equipment &amp; Driver Utilization tabs)</p>
+<hr>
+<h2 id="vanguard-reefer-diagnostics">Vanguard Reefer Diagnostics</h2>
+<p>Implements the <strong>Vanguard V1 SOP</strong> for frozen-plasma reefer health on the Thermo King S-700 fleet. Cargo must stay below <strong>−20 °C</strong> when loaded. Output is a per-trailer <strong>Vanguard Cooling Index (VCI)</strong> — a 0–100 risk score — plus a "can this trailer take a frozen plasma load?" readiness flag and a stream of severity-banded alerts.</p>
+<h3 id="per-stop-derived-fields-telemetry-matcher">Per-stop derived fields (telemetry matcher)</h3>
+<p>Computed in <code>datascrubb/matching/telemetry_matcher.py</code> for every stop with telemetry; persisted on the <code>telemetry_stop</code> table.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Formula</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>avg_evap_delta</code> / <code>min_evap_delta</code> / <code>max_evap_delta</code></td>
+<td><code>mean / min / max(DA1 − RA1)</code> over events in stop window</td>
+<td>telemetry DA1, RA1</td>
+</tr>
+<tr>
+<td><code>setpoint_compliance_pct</code></td>
+<td><code>100 × mean(\|RA1 − S1\| ≤ 1.0 °C)</code> over events</td>
+<td>telemetry RA1, S1</td>
+</tr>
+<tr>
+<td><code>defrost_event_count</code></td>
+<td>count of events where <code>op_1</code> contains "DEFROST"</td>
+<td>telemetry op_1</td>
+</tr>
+<tr>
+<td><code>max_cargo_temp</code></td>
+<td><code>max(S2, S3, S4, S5, S6)</code> per event, then max over window</td>
+<td>telemetry S2–S6</td>
+</tr>
+<tr>
+<td><code>bulkhead_seal_index</code></td>
+<td><code>mean(S4) − mean(avg(S5, S6))</code> — heat penetration proxy</td>
+<td>telemetry S4–S6</td>
+</tr>
+<tr>
+<td><code>da1_present_pct</code></td>
+<td><code>100 × mean(DA1 not null)</code> — data-quality signal</td>
+<td>telemetry DA1</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Defrost detection note:</strong> uses the <code>op_1</code> column (which has 15k+ "Defrost" values in our data) — <em>not</em> <code>unit_mode</code> (which is mostly "C" and not useful).</p>
+<h3 id="per-trailer-baselines-vanguard_baselines">Per-trailer baselines (<code>vanguard_baselines</code>)</h3>
+<p>Per-trailer rolling baselines from clean stops only — defined as <code>door_open_events == 0 AND telem_events ≥ 2 AND defrost_event_count == 0</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Formula</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>baseline_evap_delta</code></td>
+<td><code>mean(avg_evap_delta)</code> across clean stops in window</td>
+</tr>
+<tr>
+<td><code>baseline_compliance_pct</code></td>
+<td><code>mean(setpoint_compliance_pct)</code> across clean stops</td>
+</tr>
+<tr>
+<td><code>baseline_defrost_per_day</code></td>
+<td><code>sum(defrost_event_count) / active_days</code></td>
+</tr>
+<tr>
+<td><code>baseline_window_days</code></td>
+<td>count of distinct dates of clean stops</td>
+</tr>
+<tr>
+<td><code>baseline_source</code></td>
+<td><code>"rolling"</code> if <code>baseline_window_days ≥ baseline_min_clean_days</code> (default 7); else <code>"sop_default"</code> and the SOP fleet defaults are used: evap_delta = −6.5 °C, compliance = 90 %, defrost_per_day = 6</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Code:</strong> <code>datascrubb/kpi/vanguard.py::compute_unit_baselines</code> · <strong>Table:</strong> <code>vanguard_baselines</code> · <strong>Excel:</strong> <code>VANGUARD_BASELINES</code></p>
+<h3 id="vci-subscores-each-0100-healthy-0">VCI subscores (each 0–100, healthy = 0)</h3>
+<table>
+<thead>
+<tr>
+<th>Subscore</th>
+<th>Weight</th>
+<th>Formula</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>RH</strong> Refrigeration Health</td>
+<td>40 %</td>
+<td><code>max(delta_drift_pp, compliance_pp)</code> where <code>delta_drift_pp</code> scales current evap delta against SOP bands (healthy −5 to −8 → 0; degrading −3 to −5 → 35; significant −1 to −3 → 70; ≥ 0 → 100) and <code>compliance_pp</code> scales <code>1 − current_compliance / baseline_compliance</code> to 0–100</td>
+</tr>
+<tr>
+<td><strong>DR</strong> Defrost &amp; Recovery</td>
+<td>20 %</td>
+<td><code>0</code> if cycles/day ≤ baseline; <code>20</code> if &lt; <code>defrost_elevated_per_day</code> (default 8); <code>50</code> if &lt; <code>defrost_abnormal_per_day</code> (default 9); <code>80</code> otherwise</td>
+</tr>
+<tr>
+<td><strong>TS</strong> Temperature Stability</td>
+<td>20 %</td>
+<td><code>100</code> if any loaded stop with <code>max_cargo_temp ≥ −20 °C</code> in window; else by <code>std(max_cargo_temp)</code>: ≤ 1 → 0; ≤ 2 → 20; ≤ 4 → 50; &gt; 4 → 80</td>
+</tr>
+<tr>
+<td><strong>ABHF</strong> Airflow / Bulkhead / Heat-Flow</td>
+<td>20 %</td>
+<td>By <code>bulkhead_seal_index</code> (S4 − avg(S5, S6)): ≤ 0.5 → 0; ≤ 2 → 30; ≤ 4 → 60; &gt; 4 → 90</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Weighted VCI = round(0.40·RH + 0.20·DR + 0.20·TS + 0.20·ABHF)</strong> — then hard overrides applied.</p>
+<h3 id="hard-overrides-post-weighted">Hard overrides (post-weighted)</h3>
+<table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>Trigger</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Positive evap delta</td>
+<td><code>avg_evap_delta ≥ 0</code></td>
+<td>VCI = 100 (CRITICAL)</td>
+</tr>
+<tr>
+<td>2. Hot load</td>
+<td>any LOADED stop with <code>max_cargo_temp ≥ cargo_max_temp_c</code> (default −20 °C)</td>
+<td>VCI = 100 (CRITICAL)</td>
+</tr>
+<tr>
+<td>3. Low compliance</td>
+<td><code>current_compliance &lt; compliance_band_critical_pct</code> (default 75 %) over 24 h</td>
+<td>VCI ≥ 75 (RED)</td>
+</tr>
+<tr>
+<td>4. Delta drift</td>
+<td><code>current_evap_delta − baseline_evap_delta &gt; evap_delta_drift_critical_c</code> (default 3 °C)</td>
+<td>VCI ≥ 75 (RED)</td>
+</tr>
+<tr>
+<td>5. Repeat issue</td>
+<td>(deferred)</td>
+<td>not enforced — needs <code>inspection_events</code> workflow</td>
+</tr>
+</tbody>
+</table>
+<p>The reason for the override is recorded in <code>hard_override_applied</code>.</p>
+<h3 id="severity-bands">Severity bands</h3>
+<p>VCI band thresholds (from <code>vanguard:</code> block in <code>default.yaml</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Band</th>
+<th>VCI range</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GREEN</td>
+<td>0 – <code>band_green_max</code></td>
+<td>≤ 24</td>
+</tr>
+<tr>
+<td>YELLOW</td>
+<td><code>band_green_max + 1</code> – <code>band_yellow_max</code></td>
+<td>25 – 49</td>
+</tr>
+<tr>
+<td>ORANGE</td>
+<td><code>band_yellow_max + 1</code> – <code>band_orange_max</code></td>
+<td>50 – 74</td>
+</tr>
+<tr>
+<td>RED</td>
+<td><code>band_orange_max + 1</code> – <code>band_red_max</code></td>
+<td>75 – 99</td>
+</tr>
+<tr>
+<td>CRITICAL</td>
+<td>exactly 100</td>
+<td>100</td>
+</tr>
+</tbody>
+</table>
+<h3 id="readiness-check-can_load_frozen">Readiness check (<code>can_load_frozen</code>)</h3>
+<pre><code>can_load_frozen = (vci &lt; 75) AND (loaded_hot_count == 0)
+</code></pre>
+<p><code>block_reason</code> is populated when <code>can_load_frozen = false</code> ("VCI=82 (RED)" or "HOT_LOAD: 3 stops with cargo ≥ -20°C").</p>
+<p><strong>Code:</strong> <code>datascrubb/kpi/vanguard.py::compute_trailer_vci</code> · <strong>Table:</strong> <code>trailer_vci</code> · <strong>Excel:</strong> <code>TRAILER_VCI</code> · <strong>Page:</strong> 🛡️ Reefer Diagnostics (Vanguard)</p>
+<h3 id="alert-codes-vanguard_alerts">Alert codes (<code>vanguard_alerts</code>)</h3>
+<p>One row per active alert per trailer.</p>
+<table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Severity</th>
+<th>Trigger</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ALERT_TEMP_ABOVE_NEG20</code></td>
+<td>HIGH</td>
+<td>any loaded stop with <code>max_cargo_temp ≥ cargo_max_temp_c</code> in last 24 h</td>
+</tr>
+<tr>
+<td><code>ALERT_EVAP_DELTA</code></td>
+<td>HIGH</td>
+<td>positive evap delta (DA1 ≥ RA1)</td>
+</tr>
+<tr>
+<td><code>ALERT_EVAP_DELTA</code></td>
+<td>MEDIUM</td>
+<td>delta degraded &gt; <code>evap_delta_drift_critical_c</code> from baseline in &lt; 48 h</td>
+</tr>
+<tr>
+<td><code>ALERT_HIGH_DEFROST</code></td>
+<td>MEDIUM</td>
+<td><code>defrost_count_24h ≥ defrost_abnormal_per_day</code></td>
+</tr>
+<tr>
+<td><code>ALERT_BULKHEAD_SUSPECT</code></td>
+<td>MEDIUM</td>
+<td><code>bulkhead_seal_index &gt; 2.0</code> (S4 much warmer than S5/S6)</td>
+</tr>
+<tr>
+<td><code>ALERT_REPEAT_ISSUE</code></td>
+<td>—</td>
+<td>(deferred — needs <code>inspection_events</code>)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Code:</strong> <code>datascrubb/kpi/vanguard.py::compute_vanguard_alerts</code> · <strong>Table:</strong> <code>vanguard_alerts</code> · <strong>Excel:</strong> <code>VANGUARD_ALERTS</code></p>
+<h3 id="where-to-override">Where to override</h3>
+<p>Every threshold lives under the <code>vanguard:</code> block of <code>config/default.yaml</code> (24 keys: cargo cap, evap delta bands, compliance bands, defrost expectations, VCI weights, severity bands, baseline window). All editable from <strong>Admin → Reefer (Vanguard SOP)</strong>.</p>
 <hr>
 <h2 id="validation-rules">Validation rules</h2>
 <p>The validation engine emits findings into <code>validation_error</code> with three severities:</p>

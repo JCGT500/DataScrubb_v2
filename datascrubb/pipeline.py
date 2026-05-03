@@ -47,6 +47,9 @@ from datascrubb.kpi import (
     compute_route_revenue,
     compute_route_revenue_weekly,
     compute_trailer_revenue_weekly,
+    compute_trailer_vci,
+    compute_unit_baselines,
+    compute_vanguard_alerts,
     compute_temp_compliance,
     compute_trailer_utilization,
 )
@@ -297,6 +300,11 @@ class Pipeline:
             results.route_revenue_weekly = compute_route_revenue_weekly(
                 _filter_warehouses(crst_full, inc.route_revenue_weekly), results.route_revenue,
             )
+
+            # ─── Vanguard Reefer Diagnostics ───
+            results.vanguard_baselines = compute_unit_baselines(crst_full, cfg.vanguard)
+            results.trailer_vci = compute_trailer_vci(crst_full, results.vanguard_baselines, cfg.vanguard)
+            results.vanguard_alerts = compute_vanguard_alerts(crst_full, results.trailer_vci, cfg.vanguard)
             logger.info(
                 "KPI rollups: routes=%d, billing_recon_rows=%d, drivers=%d, revenue_rows=%d, "
                 "loaded_miles=%d, scorecards=%d, lanes=%d, risk_rows=%d",
@@ -397,6 +405,9 @@ class Pipeline:
                     demand_forecast=results.demand_forecast,
                     trailer_revenue_weekly=results.trailer_revenue_weekly,
                     route_revenue_weekly=results.route_revenue_weekly,
+                    vanguard_baselines=results.vanguard_baselines,
+                    trailer_vci=results.trailer_vci,
+                    vanguard_alerts=results.vanguard_alerts,
                 )
 
             logger.info("Pipeline run %s completed successfully", run_id)
@@ -468,6 +479,9 @@ class Pipeline:
             ("demand_forecast", results.demand_forecast),
             ("trailer_revenue_weekly", results.trailer_revenue_weekly),
             ("route_revenue_weekly", results.route_revenue_weekly),
+            ("vanguard_baselines", results.vanguard_baselines),
+            ("trailer_vci", results.trailer_vci),
+            ("vanguard_alerts", results.vanguard_alerts),
         ]:
             if frame is not None and not frame.empty:
                 frame.to_sql(name, engine, if_exists="replace", index=False)

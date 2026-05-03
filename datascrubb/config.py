@@ -112,6 +112,34 @@ class MapConfig:
 
 
 @dataclass
+class VanguardConfig:
+    cargo_max_temp_c: float = -20.0
+    evap_delta_healthy_min: float = -8.0
+    evap_delta_healthy_max: float = -5.0
+    evap_delta_degrading_max: float = -3.0
+    evap_delta_significant_max: float = -1.0
+    evap_delta_drift_critical_c: float = 3.0
+    compliance_band_critical_pct: float = 75.0
+    compliance_baseline_target_pct: float = 92.0
+    defrost_baseline_per_day: float = 6.0
+    defrost_elevated_per_day: float = 8.0
+    defrost_abnormal_per_day: float = 9.0
+    defrost_max_duration_min: float = 40.0
+    weight_rh: float = 0.40
+    weight_dr: float = 0.20
+    weight_ts: float = 0.20
+    weight_abhf: float = 0.20
+    band_green_max: int = 24
+    band_yellow_max: int = 49
+    band_orange_max: int = 74
+    band_red_max: int = 99
+    baseline_window_days: int = 30
+    baseline_min_clean_days: int = 7
+    default_baseline_evap_delta: float = -6.5
+    default_baseline_compliance_pct: float = 90.0
+
+
+@dataclass
 class StopClassificationConfig:
     use_s_code_for_plasma: bool = True
     rules: list[dict] = field(default_factory=list)
@@ -175,6 +203,7 @@ class Config:
     capacity: CapacityConfig = field(default_factory=CapacityConfig)
     validation: ValidationConfig = field(default_factory=ValidationConfig)
     map: MapConfig = field(default_factory=MapConfig)
+    vanguard: VanguardConfig = field(default_factory=VanguardConfig)
     stop_classification: StopClassificationConfig = field(default_factory=StopClassificationConfig)
     warehouse_inclusion: WarehouseInclusionConfig = field(default_factory=WarehouseInclusionConfig)
     sources: dict[str, SourceConfig] = field(default_factory=dict)
@@ -238,6 +267,7 @@ def load_config(
     capacity_section = cfg_data.get("capacity", {}) or {}
     validation_section = cfg_data.get("validation", {}) or {}
     map_section = cfg_data.get("map", {}) or {}
+    vanguard_section = cfg_data.get("vanguard", {}) or {}
     classify_section = cfg_data.get("stop_classification", {}) or {}
     inclusion_section = cfg_data.get("warehouse_inclusion", {}) or {}
 
@@ -311,6 +341,32 @@ def load_config(
         map=MapConfig(
             default_max_stops_render=_g(map_section, "default_max_stops_render", 1500),
             default_height_px=_g(map_section, "default_height_px", 900),
+        ),
+        vanguard=VanguardConfig(
+            cargo_max_temp_c=_g(vanguard_section, "cargo_max_temp_c", -20.0),
+            evap_delta_healthy_min=_g(vanguard_section, "evap_delta_healthy_min", -8.0),
+            evap_delta_healthy_max=_g(vanguard_section, "evap_delta_healthy_max", -5.0),
+            evap_delta_degrading_max=_g(vanguard_section, "evap_delta_degrading_max", -3.0),
+            evap_delta_significant_max=_g(vanguard_section, "evap_delta_significant_max", -1.0),
+            evap_delta_drift_critical_c=_g(vanguard_section, "evap_delta_drift_critical_c", 3.0),
+            compliance_band_critical_pct=_g(vanguard_section, "compliance_band_critical_pct", 75.0),
+            compliance_baseline_target_pct=_g(vanguard_section, "compliance_baseline_target_pct", 92.0),
+            defrost_baseline_per_day=_g(vanguard_section, "defrost_baseline_per_day", 6.0),
+            defrost_elevated_per_day=_g(vanguard_section, "defrost_elevated_per_day", 8.0),
+            defrost_abnormal_per_day=_g(vanguard_section, "defrost_abnormal_per_day", 9.0),
+            defrost_max_duration_min=_g(vanguard_section, "defrost_max_duration_min", 40.0),
+            weight_rh=_g(vanguard_section, "weight_rh", 0.40),
+            weight_dr=_g(vanguard_section, "weight_dr", 0.20),
+            weight_ts=_g(vanguard_section, "weight_ts", 0.20),
+            weight_abhf=_g(vanguard_section, "weight_abhf", 0.20),
+            band_green_max=_g(vanguard_section, "band_green_max", 24),
+            band_yellow_max=_g(vanguard_section, "band_yellow_max", 49),
+            band_orange_max=_g(vanguard_section, "band_orange_max", 74),
+            band_red_max=_g(vanguard_section, "band_red_max", 99),
+            baseline_window_days=_g(vanguard_section, "baseline_window_days", 30),
+            baseline_min_clean_days=_g(vanguard_section, "baseline_min_clean_days", 7),
+            default_baseline_evap_delta=_g(vanguard_section, "default_baseline_evap_delta", -6.5),
+            default_baseline_compliance_pct=_g(vanguard_section, "default_baseline_compliance_pct", 90.0),
         ),
         stop_classification=StopClassificationConfig(
             use_s_code_for_plasma=_g(classify_section, "use_s_code_for_plasma", True),

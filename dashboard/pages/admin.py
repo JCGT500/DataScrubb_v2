@@ -67,6 +67,7 @@ def render():
         "Matching", "Validation", "Reefer / Telemetry", "Claims-Risk",
         "Driver Scorecard", "Forecast & Detention", "Customer Churn",
         "Capacity", "Revenue", "Map UI", "Warehouse Inclusion",
+        "Reefer (Vanguard SOP)",
     ])
 
     # ───────── Matching ─────────
@@ -324,6 +325,79 @@ def render():
         def _save():
             update_block(block, toggle_map)
         _tab_save_reset(block, _save, "wi")
+
+    # ───────── Reefer (Vanguard SOP) ─────────
+    with tabs[11]:
+        st.subheader("Vanguard V1 Reefer Diagnostic SOP")
+        st.caption(
+            "Frozen plasma cargo thresholds, evap-delta bands, defrost expectations, "
+            "VCI subscore weights, severity bands, and per-unit baseline parameters. "
+            "These drive the **Reefer Diagnostics** page (Equipment & People → 🛡️ Reefer Diagnostics)."
+        )
+        block = "vanguard"
+        cur = full.get(block, {}) or {}
+
+        st.markdown("**Cargo & evap-delta bands**")
+        c1, c2, c3 = st.columns(3)
+        cargo_max = c1.number_input("Cargo max temp (°C)", value=float(_g(cur, "cargo_max_temp_c", -20)), step=1.0, format="%.1f")
+        ed_hmin = c2.number_input("Healthy delta min (°C)", value=float(_g(cur, "evap_delta_healthy_min", -8)), step=0.5, format="%.1f")
+        ed_hmax = c3.number_input("Healthy delta max (°C)", value=float(_g(cur, "evap_delta_healthy_max", -5)), step=0.5, format="%.1f")
+        c4, c5, c6 = st.columns(3)
+        ed_dmax = c4.number_input("Degrading delta max", value=float(_g(cur, "evap_delta_degrading_max", -3)), step=0.5, format="%.1f")
+        ed_smax = c5.number_input("Significant delta max", value=float(_g(cur, "evap_delta_significant_max", -1)), step=0.5, format="%.1f")
+        ed_drift = c6.number_input("Drift critical (Δ°C in 48h)", value=float(_g(cur, "evap_delta_drift_critical_c", 3)), step=0.5, format="%.1f")
+
+        st.markdown("**Setpoint compliance**")
+        cc1, cc2 = st.columns(2)
+        cmp_crit = cc1.number_input("Compliance critical %", value=float(_g(cur, "compliance_band_critical_pct", 75)), min_value=0.0, max_value=100.0, step=1.0)
+        cmp_target = cc2.number_input("Compliance baseline target %", value=float(_g(cur, "compliance_baseline_target_pct", 92)), min_value=0.0, max_value=100.0, step=1.0)
+
+        st.markdown("**Defrost cycle expectations**")
+        dc1, dc2, dc3, dc4 = st.columns(4)
+        df_base = dc1.number_input("Baseline cycles/day", value=float(_g(cur, "defrost_baseline_per_day", 6)), min_value=0.0, step=1.0)
+        df_elev = dc2.number_input("Elevated cycles/day", value=float(_g(cur, "defrost_elevated_per_day", 8)), min_value=0.0, step=1.0)
+        df_abn = dc3.number_input("Abnormal cycles/day", value=float(_g(cur, "defrost_abnormal_per_day", 9)), min_value=0.0, step=1.0)
+        df_dur = dc4.number_input("Max duration (min)", value=float(_g(cur, "defrost_max_duration_min", 40)), min_value=0.0, step=5.0)
+
+        st.markdown("**VCI subscore weights** (must sum to 1.0)")
+        wc1, wc2, wc3, wc4 = st.columns(4)
+        w_rh = wc1.number_input("RH weight", value=float(_g(cur, "weight_rh", 0.4)), min_value=0.0, max_value=1.0, step=0.05, format="%.2f")
+        w_dr = wc2.number_input("DR weight", value=float(_g(cur, "weight_dr", 0.2)), min_value=0.0, max_value=1.0, step=0.05, format="%.2f")
+        w_ts = wc3.number_input("TS weight", value=float(_g(cur, "weight_ts", 0.2)), min_value=0.0, max_value=1.0, step=0.05, format="%.2f")
+        w_abhf = wc4.number_input("ABHF weight", value=float(_g(cur, "weight_abhf", 0.2)), min_value=0.0, max_value=1.0, step=0.05, format="%.2f")
+        wsum = w_rh + w_dr + w_ts + w_abhf
+        if abs(wsum - 1.0) > 0.01:
+            st.warning(f"Weights sum to {wsum:.2f} (should be 1.0).")
+
+        st.markdown("**VCI severity bands** (max VCI for each band)")
+        bc1, bc2, bc3, bc4 = st.columns(4)
+        bg = bc1.number_input("GREEN ≤", value=int(_g(cur, "band_green_max", 24)), min_value=0, max_value=100, step=1)
+        by = bc2.number_input("YELLOW ≤", value=int(_g(cur, "band_yellow_max", 49)), min_value=0, max_value=100, step=1)
+        bo = bc3.number_input("ORANGE ≤", value=int(_g(cur, "band_orange_max", 74)), min_value=0, max_value=100, step=1)
+        br = bc4.number_input("RED ≤", value=int(_g(cur, "band_red_max", 99)), min_value=0, max_value=100, step=1)
+
+        st.markdown("**Baseline window** (per-unit rolling)")
+        bw1, bw2, bw3, bw4 = st.columns(4)
+        bw = bw1.number_input("Baseline window (days)", value=int(_g(cur, "baseline_window_days", 30)), min_value=1, step=1)
+        bmin = bw2.number_input("Min clean days for rolling", value=int(_g(cur, "baseline_min_clean_days", 7)), min_value=1, step=1)
+        bdef_d = bw3.number_input("Default delta (°C)", value=float(_g(cur, "default_baseline_evap_delta", -6.5)), step=0.5, format="%.1f")
+        bdef_c = bw4.number_input("Default compliance %", value=float(_g(cur, "default_baseline_compliance_pct", 90)), min_value=0.0, max_value=100.0, step=1.0)
+
+        def _save():
+            update_block(block, {
+                "cargo_max_temp_c": cargo_max,
+                "evap_delta_healthy_min": ed_hmin, "evap_delta_healthy_max": ed_hmax,
+                "evap_delta_degrading_max": ed_dmax, "evap_delta_significant_max": ed_smax,
+                "evap_delta_drift_critical_c": ed_drift,
+                "compliance_band_critical_pct": cmp_crit, "compliance_baseline_target_pct": cmp_target,
+                "defrost_baseline_per_day": df_base, "defrost_elevated_per_day": df_elev,
+                "defrost_abnormal_per_day": df_abn, "defrost_max_duration_min": df_dur,
+                "weight_rh": w_rh, "weight_dr": w_dr, "weight_ts": w_ts, "weight_abhf": w_abhf,
+                "band_green_max": bg, "band_yellow_max": by, "band_orange_max": bo, "band_red_max": br,
+                "baseline_window_days": bw, "baseline_min_clean_days": bmin,
+                "default_baseline_evap_delta": bdef_d, "default_baseline_compliance_pct": bdef_c,
+            })
+        _tab_save_reset(block, _save, "vg")
 
     st.markdown("---")
     st.caption(
