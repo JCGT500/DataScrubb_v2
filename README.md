@@ -296,6 +296,43 @@ After editing, **re-run the pipeline** (Load Data → Run) to recompute revenue 
 
 For the **revenue formula** see [LOGIC.md → Customer Revenue](LOGIC.md#customer-revenue).
 
+### Banded pricing (mile band × weight band)
+
+Some carrier tariffs price by a 2D rate matrix instead of flat $/mile + $/stop. DataScrubb supports this as a **per-customer opt-in** — set `pricing_model: banded` on a customer and provide:
+
+- `mile_bands`: upper bounds of each mile band, ascending (e.g. `[50, 150, 300, 500]`)
+- `weight_bands`: upper bounds of each weight band in lbs, ascending
+- `rate_matrix`: 2D array of total dollars per route, shape `(len(mile_bands)+1, len(weight_bands)+1)`
+
+```yaml
+ACME_BANDED_EXAMPLE:
+  pricing_model: banded
+  mile_bands:   [50, 150, 300, 500]      # routes >500mi → last row
+  weight_bands: [500, 1000, 2000, 5000]  # routes >5000lb → last col
+  rate_matrix:
+    - [150,  175,  225,  325,  425]    # 0-50mi   · ≤500 ≤1000 ≤2000 ≤5000 >5000
+    - [225,  275,  375,  525,  700]    # 50-150
+    - [375,  475,  625,  875, 1175]    # 150-300
+    - [575,  725,  950, 1325, 1750]    # 300-500
+    - [850, 1075, 1400, 1950, 2600]    # >500
+  rate_per_stop:  0.00                   # optional add-on
+  minimum_charge: 0.00                   # optional floor
+```
+
+**Lookup rules**:
+- Bands are **upper-bound inclusive**. A route at exactly 50 mi falls into the `0-50mi` row.
+- Routes **above the largest band** clamp to the last row/column (no error — the top tier is treated as "and up").
+- **Missing/null weight** falls into the lowest weight column (column 0) so that empty/light routes still get priced.
+- **Missing/null miles** (no M3PL data) → revenue stays NaN, same as today's flat model.
+
+**Three ways to add a banded customer**:
+
+1. **Import Wizard** (recommended for real rate sheets) — Configuration → Customer Rates → 🧙 *Banded Rate Import Wizard* expander. Upload the Excel rate sheet of any layout, the wizard walks you through mapping rows/cols/bands → preview → save.
+2. **Manual entry in the dashboard** — Configuration → Customer Rates → ➕ *Add new banded customer* expander. Type a name, click Create, then edit bands and matrix cells in the per-customer editor.
+3. **Edit `customer_rates.yaml` directly** — copy the `ACME_BANDED_EXAMPLE` block.
+
+Banded customers also support **`rate_per_stop`** and **`minimum_charge`** as optional add-ons, but they default to 0 since most banded tariffs already include stops and *are* the floor. The `route_revenue` table gains a `pricing_model` column so you can audit which formula was applied to each route.
+
 ---
 
 ## SharePoint setup (5 minutes)

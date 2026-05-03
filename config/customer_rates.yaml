@@ -1,15 +1,25 @@
 # Customer rate matrix — what we CHARGE customers (revenue side)
 #
-# Each customer entry can specify any of:
-#   rate_per_mile:    $/mile billed to the customer
-#   rate_per_stop:    $/stop billed to the customer
-#   rate_per_cwt:     $/100 lbs (weight basis)
-#   minimum_charge:   minimum invoice per route
+# Two pricing models are supported per customer:
+#
+# ── pricing_model: flat (default) ────────────────────────────────
+#   Each customer specifies any of:
+#     rate_per_mile:    $/mile billed to the customer
+#     rate_per_stop:    $/stop billed to the customer
+#     rate_per_cwt:     $/100 lbs (weight basis)
+#     minimum_charge:   minimum invoice per route
+#   Revenue = max(miles*$/mi + stops*$/stop + (lbs/100)*$/cwt, minimum_charge)
+#
+# ── pricing_model: banded ────────────────────────────────────────
+#   2D rate matrix indexed by mile band × weight band.
+#   Bands are upper-bound inclusive; routes above the largest band clamp
+#   to the last row/column. See the ACME_BANDED_EXAMPLE below.
 #
 # A "default" entry is used when no customer-specific entry exists.
 # Edit this file directly OR via the Rate Matrix page in the dashboard.
 
 default:
+  pricing_model: flat
   rate_per_mile: 2.25
   rate_per_stop: 95.00
   rate_per_cwt: 0.00
@@ -44,3 +54,20 @@ customers:
     rate_per_mile: 2.10
     rate_per_stop: 75.00
     minimum_charge: 200.00
+
+  # ── Banded pricing example ─────────────────────────────────────
+  # Uncomment & populate, or use the dashboard's Rate Matrix → Import
+  # Wizard to bring in your real banded tariff.
+  #
+  # ACME_BANDED_EXAMPLE:
+  #   pricing_model: banded
+  #   mile_bands:   [50, 150, 300, 500]      # upper bounds (mi). Routes >500 → last row.
+  #   weight_bands: [500, 1000, 2000, 5000]  # upper bounds (lbs). Routes >5000 → last col.
+  #   rate_matrix:                            # rows × cols = (5 × 5) for 4+1 bands each
+  #     - [150,  175,  225,  325,  425]    # 0-50mi   · ≤500 ≤1000 ≤2000 ≤5000 >5000
+  #     - [225,  275,  375,  525,  700]    # 50-150
+  #     - [375,  475,  625,  875, 1175]    # 150-300
+  #     - [575,  725,  950, 1325, 1750]    # 300-500
+  #     - [850, 1075, 1400, 1950, 2600]    # >500
+  #   rate_per_stop:   0.00                  # optional add-on
+  #   minimum_charge:  0.00                  # optional floor

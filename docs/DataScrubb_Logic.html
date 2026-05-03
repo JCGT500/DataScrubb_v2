@@ -469,14 +469,33 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 2em 0; }
 <p><strong>Code:</strong> <code>datascrubb/kpi/route_kpi.py::compute_claims_risk</code> · <strong>Table:</strong> <code>claims_risk</code> · <strong>Page:</strong> Case Variance</p>
 <hr>
 <h2 id="customer-revenue-margin">Customer revenue &amp; margin</h2>
-<p><strong>The formula on the Cost vs Revenue page:</strong></p>
+<p>Two pricing models are supported per customer (<code>pricing_model: flat</code> is the default).</p>
+<h3 id="flat-pricing-pricing_model-flat">Flat pricing (<code>pricing_model: flat</code>)</h3>
 <pre><code>revenue_miles  = miles            × rate_per_mile
 revenue_stops  = stop_count       × rate_per_stop
 revenue_weight = (weight_lbs/100) × rate_per_cwt
 revenue_calc   = revenue_miles + revenue_stops + revenue_weight
 revenue        = max(revenue_calc, minimum_charge)
-margin         = revenue − cost
-margin_pct     = margin / revenue × 100
+</code></pre>
+<h3 id="banded-pricing-pricing_model-banded">Banded pricing (<code>pricing_model: banded</code>)</h3>
+<pre><code>base           = rate_matrix[mile_band(miles)][weight_band(weight_lbs)]
+revenue_calc   = base + stop_count × rate_per_stop
+revenue        = max(revenue_calc, minimum_charge)
+</code></pre>
+<p>The customer config provides:
+- <code>mile_bands</code> — upper bounds, ascending. e.g. <code>[50, 150, 300, 500]</code> → 5 rows: ≤50, ≤150, ≤300, ≤500, &gt;500.
+- <code>weight_bands</code> — same shape, in lbs.
+- <code>rate_matrix</code> — 2D array of total dollars, shape <code>(len(mile_bands)+1, len(weight_bands)+1)</code>.
+- Optional <code>rate_per_stop</code> and <code>minimum_charge</code> add-ons (default 0).</p>
+<p><strong>Band-lookup rules:</strong>
+- <strong>Upper-bound inclusive.</strong> Route at exactly 50 mi → first row. Route at 50.01 mi → second row.
+- <strong>Above the largest band:</strong> clamp to the last row/column. The top tier is treated as "and up."
+- <strong>NaN miles:</strong> revenue = NaN (same as flat-rate behavior when M3PL miles are missing).
+- <strong>NaN / 0 weight:</strong> falls into the lowest weight column (column 0).
+- <strong>Mismatched matrix shape</strong> (rows ≠ <code>len(mile_bands)+1</code> or any row's cols ≠ <code>len(weight_bands)+1</code>): <code>lookup_banded_rate</code> raises <code>ValueError</code> at compute time; the dashboard editor blocks save when shape is wrong.</p>
+<h3 id="common-to-both">Common to both</h3>
+<pre><code>margin     = revenue − cost
+margin_pct = margin / revenue × 100   (NaN when revenue == 0)
 </code></pre>
 <p><strong>Inputs per route:</strong>
 - <code>miles</code> = sum of M3PL <code>crst_miles</code> for matching <code>pro_number</code>. 0 if no M3PL row.
@@ -484,13 +503,14 @@ margin_pct     = margin / revenue × 100
 - <code>weight_lbs</code> = sum of CRST <code>sum_of_weight</code>.
 - <code>customer</code> = mode of <code>customer</code> across the route's stops.
 - <code>cost</code> = sum of M3PL <code>billed_amount</code> for matching <code>pro_number</code>. 0 if no M3PL row.</p>
-<p><strong>Rate matrix lookup:</strong>
+<p><strong>Rate-matrix lookup:</strong>
 1. Read <code>config/customer_rates.yaml</code>.
 2. Look up customer by uppercase exact match.
 3. If found, merge customer entry over default. If not, return default (with <code>_source = "default"</code>).
-4. Apply rates to inputs.</p>
-<p><strong>Override:</strong> Edit <code>config/customer_rates.yaml</code> directly, or upload via the Rate Matrix page in the dashboard.</p>
-<p><strong>Code:</strong> <code>datascrubb/kpi/revenue.py::compute_route_revenue</code>, <code>rate_for</code>, <code>load_rate_matrix</code> · <strong>Table:</strong> <code>route_revenue</code> · <strong>Page:</strong> Cost vs Revenue</p>
+4. <code>pricing_model</code> defaults to <code>"flat"</code> if missing on either default or customer entry.
+5. Apply the appropriate formula based on <code>pricing_model</code>.</p>
+<p><strong>Override:</strong> Edit <code>config/customer_rates.yaml</code> directly, or use the Rate Matrix dashboard page (manual editor for flat customers, expander editors for banded customers, or the <strong>Banded Rate Import Wizard</strong> to ingest an arbitrary Excel rate sheet).</p>
+<p><strong>Code:</strong> <code>datascrubb/kpi/revenue.py::compute_route_revenue</code>, <code>rate_for</code>, <code>load_rate_matrix</code>, <code>lookup_banded_rate</code> · <strong>Table:</strong> <code>route_revenue</code> (now includes <code>pricing_model</code> and <code>revenue_banded</code> columns) · <strong>Page:</strong> Cost vs Revenue</p>
 <hr>
 <h2 id="customer-analytics">Customer analytics</h2>
 <h3 id="customer-service-scorecard">Customer service scorecard</h3>

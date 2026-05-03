@@ -70,15 +70,66 @@ def save_rate_matrix(matrix: dict, path: Path | None = None) -> None:
 
 
 def rate_for(customer: str | None, matrix: dict) -> dict:
-    """Look up the rate dict for a customer, falling back to default."""
+    """Look up the rate dict for a customer, falling back to default.
+
+    Returned dict always includes ``pricing_model`` (defaults to "flat").
+    Banded customers carry ``mile_bands``, ``weight_bands``, and ``rate_matrix``
+    in addition to the optional flat fields (``rate_per_stop``, ``minimum_charge``).
+    """
     cust = _normalize_customer(customer)
     if cust and cust in matrix.get("customers", {}):
         merged = {**matrix.get("default", {}), **matrix["customers"][cust]}
         merged["_source"] = "customer"
-        return merged
-    fallback = dict(matrix.get("default", {}))
-    fallback["_source"] = "default"
-    return fallback
+    else:
+        merged = dict(matrix.get("default", {}))
+        merged["_source"] = "default"
+    merged.setdefault("pricing_model", "flat")
+    return merged
+
+
+def lookup_banded_rate(
+    miles: float,
+    weight_lbs: float,
+    mile_bands: list[float],
+    weight_bands: list[float],
+    rate_matrix: list[list[float]],
+) -> float:
+    """Pick the dollar value from a 2D banded rate matrix.
+
+    Bands are upper-bound inclusive (a route at exactly 50 mi → first row when
+    mile_bands[0] == 50). Routes larger than the last band clamp to the last
+    row/column.
+
+    Args:
+        miles: Total route miles.
+        weight_lbs: Total route weight in pounds.
+        mile_bands: Upper bounds of mile bands, ascending. e.g. [50, 150, 300, 500]
+            yields rows for ≤50, ≤150, ≤300, ≤500, >500.
+        weight_bands: Upper bounds of weight bands, ascending.
+        rate_matrix: 2D array shaped (len(mile_bands)+1, len(weight_bands)+1).
+
+    Returns:
+        Dollar value from the chosen cell, or NaN if miles is null/missing.
+
+    Raises:
+        ValueError: If matrix shape doesn't match the band counts.
+    """
+    if pd.isna(miles):
+        return float("nan")
+    expected_rows = len(mile_bands) + 1
+    expected_cols = len(weight_bands) + 1
+    if len(rate_matrix) != expected_rows or any(len(r) != expected_cols for r in rate_matrix):
+        raise ValueError(
+            f"rate_matrix shape mismatch: expected {expected_rows}×{expected_cols}, "
+            f"got {len(rate_matrix)}×{len(rate_matrix[0]) if rate_matrix else 0}"
+        )
+    # Treat NaN/None weight as 0 — falls into the lowest weight band
+    w = 0.0 if pd.isna(weight_lbs) else float(weight_lbs)
+    m = float(miles)
+
+    row = next((i for i, ub in enumerate(mile_bands) if m <= ub), len(mile_bands))
+    col = next((i for i, ub in enumerate(weight_bands) if w <= ub), len(weight_bands))
+    return float(rate_matrix[row][col])
 
 
 def compute_route_revenue(
@@ -164,19 +215,59 @@ def compute_route_revenue(
 
     # Apply rate matrix per row
     rate_rows = routes["customer"].apply(lambda c: rate_for(c, matrix))
+    routes["pricing_model"] = [r.get("pricing_model", "flat") for r in rate_rows]
     routes["rate_per_mile"] = [r.get("rate_per_mile", 0) or 0 for r in rate_rows]
     routes["rate_per_stop"] = [r.get("rate_per_stop", 0) or 0 for r in rate_rows]
     routes["rate_per_cwt"] = [r.get("rate_per_cwt", 0) or 0 for r in rate_rows]
     routes["minimum_charge"] = [r.get("minimum_charge", 0) or 0 for r in rate_rows]
     routes["rate_source"] = [r.get("_source", "default") for r in rate_rows]
 
-    routes["revenue_miles"] = (routes["miles"] * routes["rate_per_mile"]).round(2)
-    routes["revenue_stops"] = (routes["stop_count"] * routes["rate_per_stop"]).round(2)
-    routes["revenue_weight"] = (routes["weight_lbs"] / 100.0 * routes["rate_per_cwt"]).round(2)
+    # ─── Per-row revenue ─────────────────────────────────────────
+    # Flat: miles*$/mi + stops*$/stop + (lbs/100)*$/cwt, floored at minimum_charge
+    # Banded: rate_matrix lookup + stops*$/stop, floored at minimum_charge
+    revenues = np.zeros(len(routes), dtype=float)
+    rev_miles = np.zeros(len(routes), dtype=float)
+    rev_stops = np.zeros(len(routes), dtype=float)
+    rev_weight = np.zeros(len(routes), dtype=float)
+    rev_banded = np.full(len(routes), np.nan, dtype=float)
+
+    for i, (_, row) in enumerate(routes.iterrows()):
+        r = rate_rows.iloc[i]
+        if r.get("pricing_model") == "banded" and r.get("rate_matrix"):
+            try:
+                base = lookup_banded_rate(
+                    row["miles"], row["weight_lbs"],
+                    r["mile_bands"], r["weight_bands"], r["rate_matrix"],
+                )
+            except (ValueError, KeyError, TypeError) as e:
+                logger.warning(
+                    "Banded rate lookup failed for customer=%s route=%s: %s — falling back to 0",
+                    row["customer"], row["route_id"], e,
+                )
+                base = 0.0
+            rev_banded[i] = round(base, 2) if not np.isnan(base) else np.nan
+            stops_dollars = row["stop_count"] * row["rate_per_stop"]
+            rev_stops[i] = round(stops_dollars, 2)
+            calc = (0.0 if np.isnan(base) else base) + stops_dollars
+            revenues[i] = round(max(calc, row["minimum_charge"]), 2)
+        else:
+            rm = round(row["miles"] * row["rate_per_mile"], 2)
+            rs = round(row["stop_count"] * row["rate_per_stop"], 2)
+            rw = round(row["weight_lbs"] / 100.0 * row["rate_per_cwt"], 2)
+            rev_miles[i] = rm
+            rev_stops[i] = rs
+            rev_weight[i] = rw
+            revenues[i] = round(max(rm + rs + rw, row["minimum_charge"]), 2)
+
+    routes["revenue_miles"] = rev_miles
+    routes["revenue_stops"] = rev_stops
+    routes["revenue_weight"] = rev_weight
+    routes["revenue_banded"] = rev_banded
     routes["revenue_calc"] = (
         routes["revenue_miles"] + routes["revenue_stops"] + routes["revenue_weight"]
+        + routes["revenue_banded"].fillna(0.0)
     ).round(2)
-    routes["revenue"] = np.maximum(routes["revenue_calc"], routes["minimum_charge"]).round(2)
+    routes["revenue"] = revenues
     routes["margin"] = (routes["revenue"] - routes["cost"]).round(2)
     routes["margin_pct"] = np.where(
         routes["revenue"].abs() > 0,
@@ -187,8 +278,9 @@ def compute_route_revenue(
     cols = [
         "route_id", "route_name", "customer",
         "miles", "stop_count", "weight_lbs",
+        "pricing_model",
         "rate_per_mile", "rate_per_stop", "rate_per_cwt", "minimum_charge", "rate_source",
-        "revenue_miles", "revenue_stops", "revenue_weight",
+        "revenue_miles", "revenue_stops", "revenue_weight", "revenue_banded",
         "revenue", "cost", "margin", "margin_pct",
     ]
     return routes[cols].sort_values("margin", ascending=False)
