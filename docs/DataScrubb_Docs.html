@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>DataScrubb — Documentation</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+:root {
+  --fg: #1f2937;
+  --muted: #6b7280;
+  --bg: #ffffff;
+  --bg-alt: #f9fafb;
+  --border: #e5e7eb;
+  --accent: #2563eb;
+  --code-bg: #f3f4f6;
+  --code-fg: #111827;
+}
+* { box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--fg);
+  background: var(--bg);
+  margin: 0;
+  padding: 0;
+}
+.wrap {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 48px 32px 96px;
+}
+h1, h2, h3, h4 { line-height: 1.25; margin-top: 2em; margin-bottom: 0.5em; font-weight: 600; }
+h1 { font-size: 2.0em; border-bottom: 2px solid var(--border); padding-bottom: 0.3em; margin-top: 0; }
+h2 { font-size: 1.5em; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
+h3 { font-size: 1.2em; }
+h4 { font-size: 1.05em; color: var(--muted); }
+p { margin: 0.75em 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { padding-left: 1.5em; }
+li { margin: 0.25em 0; }
+code, pre {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, "Cascadia Mono", "Roboto Mono", monospace;
+  font-size: 0.92em;
+}
+code {
+  background: var(--code-bg);
+  color: var(--code-fg);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+pre {
+  background: var(--code-bg);
+  color: var(--code-fg);
+  padding: 14px 16px;
+  border-radius: 8px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+}
+pre code { background: transparent; padding: 0; font-size: 0.88em; line-height: 1.5; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.93em;
+}
+th, td {
+  text-align: left;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  vertical-align: top;
+}
+th { background: var(--bg-alt); font-weight: 600; }
+tr:nth-child(2n) td { background: var(--bg-alt); }
+blockquote {
+  border-left: 4px solid var(--accent);
+  background: var(--bg-alt);
+  padding: 8px 14px;
+  color: var(--muted);
+  margin: 1em 0;
+  border-radius: 0 6px 6px 0;
+}
+hr { border: 0; border-top: 1px solid var(--border); margin: 2em 0; }
+.toc {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  padding: 14px 22px;
+  border-radius: 8px;
+  margin: 1em 0 2em;
+}
+.toc ol { margin: 0; }
+.banner {
+  font-size: 0.85em;
+  color: var(--muted);
+  border: 1px dashed var(--border);
+  padding: 8px 14px;
+  border-radius: 6px;
+  margin-bottom: 24px;
+  background: var(--bg-alt);
+}
+@media print {
+  .wrap { max-width: 100%; padding: 0; }
+  pre, code { font-size: 0.78em; }
+  h1 { page-break-before: auto; }
+  h2 { page-break-before: avoid; page-break-after: avoid; }
+  table { page-break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="banner">
+      Single-file documentation — generated from <code>README.md</code>.
+      Save or email this file; it's fully self-contained.
+    </div>
+    <h1 id="datascrubb">DataScrubb</h1>
+<p>Transportation data integration &amp; analytics for plasma / refrigerated freight operations. Ingests CRST stop-level data, SAP shipment segments, reefer telemetry, and weekly M3PL invoice files; computes route, customer, driver, trailer, and lane KPIs (OTP, dwell, claims, reefer compliance, <strong>cost vs revenue margin</strong> from a per-customer rate matrix, equipment utilization, alarms, churn signal, demand forecast); presents everything in a Streamlit dashboard.</p>
+<blockquote>
+<p><strong>Status:</strong> internal tool, private repo. Customer data files are excluded from version control by <code>.gitignore</code>.</p>
+<p><strong>For HOW each metric is calculated</strong>, see <a href="LOGIC.md">LOGIC.md</a>.</p>
+</blockquote>
+<hr>
+<h2 id="table-of-contents">Table of contents</h2>
+<ol>
+<li><a href="#whats-in-here">What's in here</a></li>
+<li><a href="#quick-start">Quick start</a></li>
+<li><a href="#required-data-files">Required data files</a></li>
+<li><a href="#running-the-pipeline">Running the pipeline</a></li>
+<li><a href="#running-the-dashboard">Running the dashboard</a></li>
+<li><a href="#dashboard-pages">Dashboard pages</a></li>
+<li><a href="#customer-rate-matrix">Customer rate matrix</a></li>
+<li><a href="#data-model">Data model</a></li>
+<li><a href="#outputs">Outputs</a></li>
+<li><a href="#validation-rules">Validation rules</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#architecture">Architecture</a></li>
+<li><a href="#for-developers">For developers</a></li>
+</ol>
+<hr>
+<h2 id="whats-in-here">What's in here</h2>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Source data</th>
+<th>Where it lives</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Stop-level OTP (4 metrics)</td>
+<td>CRST</td>
+<td><code>stop_master</code>, OTP Analysis page</td>
+</tr>
+<tr>
+<td>Customer extraction &amp; filter</td>
+<td>CRST <code>location_date</code></td>
+<td><code>customer</code> column</td>
+</tr>
+<tr>
+<td>Loaded vs empty trailer detection</td>
+<td>CRST <code>stop_type</code> + <code>current_cases</code></td>
+<td><code>loaded_at_stop</code> flag</td>
+</tr>
+<tr>
+<td>Route KPIs (OTP, dwell, stops)</td>
+<td>CRST stops rolled up</td>
+<td><code>route_kpi</code>, Route KPIs page</td>
+</tr>
+<tr>
+<td>Loaded vs deadhead miles per route</td>
+<td>CRST + M3PL</td>
+<td><code>loaded_miles</code>, Route KPIs page</td>
+</tr>
+<tr>
+<td>Cross-source SAP join (S-Code + ±36 h)</td>
+<td>CRST + SAP</td>
+<td><code>sap_segment</code>, SAP Matching page</td>
+</tr>
+<tr>
+<td>Reefer telemetry stop aggregation</td>
+<td>Telemetry CSV</td>
+<td><code>telemetry_stop</code> (25+ cols)</td>
+</tr>
+<tr>
+<td>Load-aware reefer excursions</td>
+<td>telemetry + load flag</td>
+<td><code>temp_compliance</code>, Telemetry page</td>
+</tr>
+<tr>
+<td>Reefer fuel cost per route</td>
+<td>telemetry power-on + fuel rate</td>
+<td><code>route_reefer_cost</code></td>
+</tr>
+<tr>
+<td>Equipment alarm log</td>
+<td>telemetry <code>Unit Alarm</code></td>
+<td><code>alarm_log</code>, Telemetry page</td>
+</tr>
+<tr>
+<td>Idle time + speed per stop</td>
+<td>telemetry <code>Speed</code> + <code>Engine RPM</code></td>
+<td><code>telemetry_stop</code>, Driver Scorecard</td>
+</tr>
+<tr>
+<td>Door-open-while-moving safety flag</td>
+<td>telemetry <code>Door 1</code> + <code>Speed</code></td>
+<td><code>telemetry_stop</code>, Telemetry page</td>
+</tr>
+<tr>
+<td>Battery &amp; engine-hours health</td>
+<td>telemetry <code>Battery Voltage</code> / <code>Engine Hours</code></td>
+<td><code>trailer_utilization</code>, Telemetry page</td>
+</tr>
+<tr>
+<td>M3PL <strong>cost</strong> ingest (weekly)</td>
+<td>M3PL invoice xlsx</td>
+<td><code>billing_snapshot</code></td>
+</tr>
+<tr>
+<td>Customer <strong>revenue</strong> + margin</td>
+<td>rate matrix YAML + CRST + M3PL</td>
+<td><code>route_revenue</code>, Cost vs Revenue page</td>
+</tr>
+<tr>
+<td>Lane profitability (origin × destination)</td>
+<td>route_revenue + stops</td>
+<td><code>lane_profitability</code>, Cost vs Revenue page</td>
+</tr>
+<tr>
+<td>Case shortage / overage tracking</td>
+<td>CRST <code>cases_variance</code></td>
+<td>Case Variance page</td>
+</tr>
+<tr>
+<td>Claims-risk index per route</td>
+<td>cases + temp + door events</td>
+<td><code>claims_risk</code>, Case Variance page</td>
+</tr>
+<tr>
+<td>Driver scorecard (composite 0-100)</td>
+<td>OTP + dwell + cases + speed + idle</td>
+<td><code>driver_scorecard</code>, Driver Scorecard page</td>
+</tr>
+<tr>
+<td>Trailer utilization &amp; idle assets</td>
+<td>CRST + telemetry health</td>
+<td><code>trailer_utilization</code>, Trailer Utilization page</td>
+</tr>
+<tr>
+<td>Customer service scorecard</td>
+<td>CRST + revenue</td>
+<td><code>customer_scorecard</code>, Customer Insights page</td>
+</tr>
+<tr>
+<td>Customer churn signal (week-over-week)</td>
+<td>CRST stops by week</td>
+<td><code>customer_churn</code>, Customer Insights page</td>
+</tr>
+<tr>
+<td>Customer revenue concentration (Pareto)</td>
+<td>route_revenue</td>
+<td><code>customer_concentration</code>, Customer Insights page</td>
+</tr>
+<tr>
+<td>Cycle-time consistency per named route</td>
+<td>CRST arrivals/departures</td>
+<td><code>cycle_time</code>, Operations Insights page</td>
+</tr>
+<tr>
+<td>Late code root-cause ranking</td>
+<td>CRST <code>late_code</code></td>
+<td><code>late_code_analysis</code>, Operations Insights page</td>
+</tr>
+<tr>
+<td>Detention audit (billable hours per customer)</td>
+<td>CRST dwell &gt; 2hr</td>
+<td><code>detention_audit</code>, Operations Insights page</td>
+</tr>
+<tr>
+<td>4-week demand forecast per customer</td>
+<td>CRST weekly stops</td>
+<td><code>demand_forecast</code>, Operations Insights page</td>
+</tr>
+<tr>
+<td>Late-stops geographic map</td>
+<td>CRST city/state</td>
+<td>OTP Analysis page (state choropleth + city pins)</td>
+</tr>
+<tr>
+<td>Heat maps (route×stop temp, day×hour, customer×day)</td>
+<td>CRST + telemetry</td>
+<td>Telemetry page</td>
+</tr>
+<tr>
+<td>Multi-sheet Excel export</td>
+<td>All of the above</td>
+<td><code>output/Trans_KPI_Validation_&lt;runid&gt;.xlsx</code> (29 sheets)</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="quick-start">Quick start</h2>
+<h3 id="windows-powershell-or-bash">Windows (PowerShell or bash)</h3>
+<pre><code class="language-bash">git clone https://github.com/JCGT500/datascrubb.git
+cd datascrubb
+
+python -m venv .venv
+.venv/Scripts/python.exe -m pip install --upgrade pip
+.venv/Scripts/python.exe -m pip install -r requirements.txt
+.venv/Scripts/python.exe -m pip install -e .
+
+# Drop your data files into the project root (see &quot;Required data files&quot;)
+# Then run the dashboard:
+.venv/Scripts/python.exe -m streamlit run dashboard/app.py
+</code></pre>
+<p>The dashboard opens at <a href="http://localhost:8501">http://localhost:8501</a>. Use the <strong>Load Data</strong> page to upload files and run the pipeline; every other page reads from the resulting SQLite DB.</p>
+<h3 id="mac-linux">Mac / Linux</h3>
+<pre><code class="language-bash">git clone https://github.com/JCGT500/datascrubb.git
+cd datascrubb
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+pip install -e .
+streamlit run dashboard/app.py
+</code></pre>
+<h3 id="vs-code-one-click">VS Code (one-click)</h3>
+<p><code>.vscode/launch.json</code> provides two configurations:</p>
+<ul>
+<li><strong>Streamlit: DataScrubb dashboard</strong> — F5 launches Streamlit with the right Python interpreter.</li>
+<li><strong>Pipeline: CRST + SAP + Telemetry + M3PL (current files)</strong> — F5 runs <code>run_pipeline.py</code> against whatever data files are in the project root. Useful for breakpoints / headless reruns.</li>
+</ul>
+<blockquote>
+<p><strong>Important:</strong> when launching from VS Code, pick the right config from the <strong>Run and Debug</strong> dropdown (Ctrl+Shift+D). The default "Run Python File" button just runs the .py directly and won't render a Streamlit UI.</p>
+</blockquote>
+<hr>
+<h2 id="required-data-files">Required data files</h2>
+<p>Drop these into the project root. <strong>Do not commit them</strong> — <code>.gitignore</code> excludes them by name pattern.</p>
+<table>
+<thead>
+<tr>
+<th>File pattern</th>
+<th>What it is</th>
+<th>Required?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CRST data*.xlsx</code></td>
+<td>TMS export — one row per stop with appointments, arrivals, cases, BOL, driver, equipment</td>
+<td><strong>Yes</strong></td>
+</tr>
+<tr>
+<td><code>SAP*.xlsx</code></td>
+<td>SAP shipment-segment export with shipper/consignee, BOL, cases, weight</td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>AI Troubleshooting*.csv</code> (or any reefer telemetry CSV)</td>
+<td>Per-event telemetry: timestamp, vehicle, GPS, ambient/reefer temps, door, engine, speed, fuel, alarms</td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>Backup *M3PL*.xlsx</code> (one per billing week)</td>
+<td>Weekly carrier invoice with INVOICE + SUMMARY sheets</td>
+<td>Optional</td>
+</tr>
+</tbody>
+</table>
+<p>The <code>m3pl</code> source accepts a list of files — <code>run_pipeline.py</code> auto-discovers all matching <code>Backup *M3PL*.xlsx</code> files in the project root.</p>
+<hr>
+<h2 id="running-the-pipeline">Running the pipeline</h2>
+<h3 id="from-the-dashboard-recommended-for-analysts">From the dashboard (recommended for analysts)</h3>
+<ol>
+<li>Start Streamlit: <code>.venv/Scripts/python.exe -m streamlit run dashboard/app.py</code></li>
+<li>Go to <strong>Load Data</strong>.</li>
+<li>Upload the CRST file (required) and any of SAP / Telemetry / M3PL (multiple M3PL files OK).</li>
+<li>Click <strong>Run Pipeline</strong>. ~90 seconds for a typical month's data.</li>
+<li>Result metrics appear at the top; Excel output is written to <code>output/</code>. Every other page now reads from the populated SQLite DB.</li>
+</ol>
+<h3 id="from-the-command-line">From the command line</h3>
+<pre><code class="language-bash">.venv/Scripts/python.exe run_pipeline.py
+</code></pre>
+<p><code>run_pipeline.py</code> discovers any matching data files in the project root and runs everything end-to-end, then prints a summary.</p>
+<h3 id="from-python">From Python</h3>
+<pre><code class="language-python">from datascrubb.pipeline import Pipeline
+
+result = Pipeline().run(source_files={
+    &quot;crst&quot;: &quot;CRST data - 2026-Jan.xlsx&quot;,
+    &quot;sap&quot;:  &quot;SAP_Jan thru_feb.xlsx&quot;,
+    &quot;telemetry&quot;: &quot;AI Troubleshooting_050126_193038_14_60663.csv&quot;,
+    &quot;m3pl&quot;: [
+        &quot;Backup 36673 of M3PL 01032026.xlsx&quot;,
+        &quot;Backup 36962 M3PL INVOICE 01.17.26.xlsx&quot;,
+        &quot;Backup 37323 M3PL INVOICE WE 1.31.2026.xlsx&quot;,
+    ],
+}, export_excel=True)
+
+print(result)
+</code></pre>
+<hr>
+<h2 id="running-the-dashboard">Running the dashboard</h2>
+<pre><code class="language-bash">.venv/Scripts/python.exe -m streamlit run dashboard/app.py
+</code></pre>
+<p>Open <a href="http://localhost:8501">http://localhost:8501</a>. The sidebar has:</p>
+<ul>
+<li><strong>Navigation</strong> — pick a page (top of sidebar).</li>
+<li><strong>Filters</strong> — shared across every data page. Selections persist as you switch pages until you click <strong>Reset filters</strong> at the bottom.</li>
+</ul>
+<h3 id="shared-filters">Shared filters</h3>
+<table>
+<thead>
+<tr>
+<th>Filter</th>
+<th>Applies to</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Date range (Start / End)</td>
+<td>Every stop / billing row by <code>arrival_date</code> / <code>billing_week_end</code></td>
+</tr>
+<tr>
+<td>Customer</td>
+<td>Stops whose extracted customer matches</td>
+</tr>
+<tr>
+<td>Route Name</td>
+<td>Stops whose CRST <code>route_name</code> matches (e.g. AMES, AUGUSTA)</td>
+</tr>
+<tr>
+<td>S-Code</td>
+<td>Stops with the selected plasma center code</td>
+</tr>
+<tr>
+<td>Lane</td>
+<td>M3PL billing rows in the selected lane</td>
+</tr>
+<tr>
+<td>Stop Type</td>
+<td>All / PLASMA_CENTER / WAREHOUSE</td>
+</tr>
+<tr>
+<td>Performance</td>
+<td>On Time / Late / Early / Missing Arrival / Missing Appointment</td>
+</tr>
+<tr>
+<td>Search Order#</td>
+<td>Substring match on order number / PRO#</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="dashboard-pages">Dashboard pages</h2>
+<p>Listed in nav order.</p>
+<h3 id="overview">Overview</h3>
+<p>Headline KPI cards (stops, OTP %, errors, distinct routes/customers, avg dwell, total billed, SAP match rate). Performance distribution pie + stops-per-day bar + OTP trend line + <strong>OTP by customer</strong> bar.</p>
+<h3 id="load-data">Load Data</h3>
+<p>File uploaders for CRST (required) plus SAP / Telemetry / M3PL (M3PL accepts multiple weekly files). Click <strong>Run Pipeline</strong> to process everything end-to-end. Result row shows stops, billing rows, SAP match rate, telemetry coverage, M3PL match rate, error counts.</p>
+<h3 id="route-kpis">Route KPIs</h3>
+<p>Per-route rollup: OTP rate, avg dwell minutes, stop count, equipment used. Sortable by OTP / stops / dwell / late minutes. Top-25 horizontal bar of OTP, plus a stops × dwell scatter colored by OTP. <strong>Loaded vs Deadhead Miles</strong> section with KPI cards (total/loaded/deadhead/loaded%) and top-20 deadhead bar. Three tabs at bottom for <strong>Drivers / Tractors / Trailers</strong> utilization.</p>
+<h3 id="cost-vs-revenue-margin-analysis">Cost vs Revenue <em>(margin analysis)</em></h3>
+<ul>
+<li><strong>Cost</strong> = M3PL <code>billed_amount</code> per PRO#.</li>
+<li><strong>Revenue</strong> = miles × $/mile + stops × $/stop + cwt × $/cwt, floored at minimum charge (from rate matrix).</li>
+<li><strong>Margin</strong> = revenue − cost.</li>
+</ul>
+<p>Four tabs: <em>Margin by Route</em>, <em>Cost (M3PL) detail</em>, <em>Customer rollup</em>, <em>Lane Profitability</em> (origin-state × destination-state heatmap).</p>
+<h3 id="rate-matrix">Rate Matrix</h3>
+<p>View, edit, <strong>upload</strong>, download per-customer rate table.</p>
+<ul>
+<li><strong>Upload</strong> CSV/Excel with columns <code>customer</code>, <code>rate_per_mile</code>, <code>rate_per_stop</code>, <code>rate_per_cwt</code>, <code>minimum_charge</code>. Tolerant of header variants.</li>
+<li>Save modes: <strong>Replace</strong> or <strong>Merge</strong>.</li>
+<li>Templates (CSV + Excel) and current-matrix export.</li>
+<li>Inline <code>st.data_editor</code> for row-by-row edits.</li>
+</ul>
+<h3 id="case-variance">Case Variance</h3>
+<p>Stops where <code>tender_cases ≠ current_cases</code>. Net variance, total short, total over. Breakouts by <strong>Customer</strong>, <strong>Driver</strong>, <strong>Route</strong>. Per-stop detail. <strong>Claims-Risk Index</strong> section: 0-100 composite blending case shortages (40%), loaded reefer excursions (40%), excess door events (20%), banded HIGH/MEDIUM/LOW.</p>
+<h3 id="driver-scorecard">Driver Scorecard</h3>
+<p>Composite 0-100 score: 40% OTP + 20% low-late-rate + 20% low-dwell + 20% low-cases-variance, all min-max scaled. Top/bottom 15 bars, score histogram with median line, sortable roster (also by max speed / idle minutes / door-open-while-moving).</p>
+<h3 id="trailer-utilization">Trailer Utilization</h3>
+<p>Per-trailer asset utilization. KPI cards (trailers, period days, avg utilization, total stops/miles), quartile bands. Distribution histogram, bottom-20 by utilization, <strong>Pareto curve</strong> of cumulative miles share, <strong>activity heatmap</strong> (top 50 trailers × date). Sortable detail with health columns: alarms, battery min/avg, engine hours, reefer fuel cost.</p>
+<h3 id="customer-insights">Customer Insights</h3>
+<p>Four tabs:
+- <strong>Scorecard</strong> — per-customer stops / routes / OTP / dwell / claims / excursions / revenue / margin. Stops × OTP scatter colored by margin.
+- <strong>Churn signal</strong> — week-over-week PRO# change, banded CHURN_RISK / DECLINING / STABLE / GROWING / NEW.
+- <strong>Concentration risk</strong> — top-N revenue share metrics + Pareto curve with 80% line + top-20 revenue bar.
+- <strong>Weekly trend</strong> — top-10 customers' weekly stops line + top-30 weekly heatmap.</p>
+<h3 id="operations-insights">Operations Insights</h3>
+<p>Four tabs:
+- <strong>Cycle Time Consistency</strong> — std dev of cycle time across PRO# instances of a named route.
+- <strong>Late Code Root Cause</strong> — top late codes by occurrence with avg minutes late.
+- <strong>Detention Audit</strong> — customers with dwell &gt; 2 hr; total billable detention hours.
+- <strong>Demand Forecast</strong> — 4-week ES projection per customer; history (solid) + forecast (dashed) line chart.</p>
+<h3 id="stop-explorer">Stop Explorer</h3>
+<p>Every column on <code>stop_master</code> filtered by the shared sidebar, sortable by customer / arrival / dwell / lateness / route. Includes load info, telemetry summary (min_s1, max_s1, door events, etc.).</p>
+<h3 id="otp-analysis">OTP Analysis</h3>
+<p>KPI metric selector (4 OTP definitions). KPI cards (rate, evaluable, total, avg minutes late). Performance pie + OTP trend over time. <strong>OTP by S-Code</strong> + <strong>OTP by Customer</strong> bars. Minutes-from-appointment histogram with ±120-min reference lines. <strong>Where are the late stops?</strong> — state choropleth + city pin map (offline geocoding via <code>geonamescache</code>).</p>
+<h3 id="sap-matching">SAP Matching</h3>
+<p>Total segments, matched / unmatched counts, match rate. Tabs for Matched (with time-difference histogram) and Unmatched (with download).</p>
+<h3 id="telemetry-reefer-compliance">Telemetry &amp; Reefer Compliance</h3>
+<p>Coverage cards. Distribution histograms for ambient and <strong>min S1 reefer temp</strong> (with -25 °C setpoint reference line). Three <strong>heat map</strong> tabs: Route × Stop # (min S1), Day × Hour (door events), Customer × Day of Week (excursions). Stop-level telemetry table. <strong>Route-level reefer compliance</strong> (load-aware — only loaded stops count). <strong>Equipment Health &amp; Safety</strong> section: alarm leaderboard, battery health bar, door-open-while-moving incident table.</p>
+<h3 id="validation-report">Validation Report</h3>
+<p>Run history, error summary cards (Hard / Soft / Warning), error-by-reason and by-source bars, drill-down per run, error reference table.</p>
+<hr>
+<h2 id="customer-rate-matrix">Customer rate matrix</h2>
+<p>Lives at <code>config/customer_rates.yaml</code>. Format:</p>
+<pre><code class="language-yaml">default:
+  rate_per_mile: 2.25
+  rate_per_stop: 95.00
+  rate_per_cwt: 0.00
+  minimum_charge: 250.00
+
+customers:
+  CSL:
+    rate_per_mile: 2.50
+    rate_per_stop: 100.00
+    minimum_charge: 300.00
+  BIOLIFE:
+    rate_per_mile: 2.65
+    ...
+</code></pre>
+<p><strong>Customer names are uppercased</strong> automatically. Matched against the <code>customer</code> column on each stop (extracted from CRST <code>location_date</code>).</p>
+<h3 id="three-ways-to-edit">Three ways to edit</h3>
+<ol>
+<li><strong>Upload</strong> CSV/Excel via the Rate Matrix page (easiest for bulk edits).</li>
+<li><strong>Inline edit</strong> the per-customer table on the Rate Matrix page (<code>st.data_editor</code>).</li>
+<li><strong>Edit YAML directly</strong> with any text editor.</li>
+</ol>
+<p>After editing, <strong>re-run the pipeline</strong> (Load Data → Run) to recompute revenue and margin.</p>
+<p>For the <strong>revenue formula</strong> see <a href="LOGIC.md#customer-revenue">LOGIC.md → Customer Revenue</a>.</p>
+<hr>
+<h2 id="data-model">Data model</h2>
+<p>SQLite database at <code>data/datascrubb.db</code>. WAL mode, foreign keys ON.</p>
+<table>
+<thead>
+<tr>
+<th>Table</th>
+<th>Grain</th>
+<th>Source</th>
+<th>Key columns</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>stop_master</code></td>
+<td>one row per physical stop</td>
+<td>CRST normalized</td>
+<td>transaction_id (PK), order_number, customer, s_code, arrival_date, actual_arrival/departure, dwell_minutes, loaded_at_stop, cases_variance, otp_*, telemetry summary</td>
+</tr>
+<tr>
+<td><code>sap_segment</code></td>
+<td>one row per matched SAP segment</td>
+<td>SAP + matcher</td>
+<td>transaction_id, document_number, segment_number, time_diff_hours, sap_match_flag</td>
+</tr>
+<tr>
+<td><code>telemetry_stop</code></td>
+<td>one row per stop with telemetry</td>
+<td>telemetry + matcher</td>
+<td>transaction_id (PK), 25+ aggregations: temps, doors, speed, idle, fuel, alarms, battery, engine hours, setpoint changes</td>
+</tr>
+<tr>
+<td><code>billing_snapshot</code></td>
+<td>one row per (PRO#, billing week)</td>
+<td>M3PL adapter</td>
+<td>pro_number + billing_week_end (PK), lane, crst_miles, billed_amount, all rates</td>
+</tr>
+<tr>
+<td><code>route_kpi</code></td>
+<td>one row per route</td>
+<td>KPI rollup</td>
+<td>route_id, stop_count, otp_time_pass_rate, dwell_minutes_avg, route_name</td>
+</tr>
+<tr>
+<td><code>loaded_miles</code></td>
+<td>one row per route</td>
+<td>KPI rollup</td>
+<td>route_id, total_segments, loaded_segments, loaded_pct, total_miles, estimated_loaded_miles, estimated_deadhead_miles</td>
+</tr>
+<tr>
+<td><code>route_revenue</code></td>
+<td>one row per route</td>
+<td>KPI revenue calc</td>
+<td>route_id, customer, cost, revenue, margin, margin_pct, miles, stop_count, weight_lbs, all rate inputs</td>
+</tr>
+<tr>
+<td><code>route_reefer_cost</code></td>
+<td>one row per route</td>
+<td>KPI rollup</td>
+<td>route_id, reefer_runtime_hours, reefer_gallons, reefer_fuel_cost</td>
+</tr>
+<tr>
+<td><code>miles_variance</code></td>
+<td>one row per (route × billing week)</td>
+<td>KPI rollup</td>
+<td>route_id, m3pl_billed_miles, crst_stop_count, miles_per_crst_stop</td>
+</tr>
+<tr>
+<td><code>billing_recon</code></td>
+<td>one row per PRO#</td>
+<td>KPI rollup</td>
+<td>pro_number, billed_amount, expected_amount, delta, delta_pct</td>
+</tr>
+<tr>
+<td><code>claims_risk</code></td>
+<td>one row per route</td>
+<td>KPI rollup</td>
+<td>route_id, risk_score, risk_band, short_cases, excursion_stops, excess_door_events</td>
+</tr>
+<tr>
+<td><code>lane_profitability</code></td>
+<td>one row per (origin × dest)</td>
+<td>KPI rollup</td>
+<td>origin_state, dest_state, routes, cost, revenue, margin, margin_pct</td>
+</tr>
+<tr>
+<td><code>equip_util_tractor</code> / <code>_trailer</code> / <code>_driver</code></td>
+<td>one row per equipment / driver</td>
+<td>KPI rollup</td>
+<td>id, total_stops, distinct_routes, otp_rate, total_miles, active_days</td>
+</tr>
+<tr>
+<td><code>driver_scorecard</code></td>
+<td>one row per driver</td>
+<td>KPI rollup</td>
+<td>rank, driver, score, OTP, late_rate, dwell, cases_variance, max_speed, idle_minutes</td>
+</tr>
+<tr>
+<td><code>trailer_utilization</code></td>
+<td>one row per trailer</td>
+<td>KPI rollup</td>
+<td>trailer, utilization_pct, active_days, idle_days, max_consecutive_idle_days, alarms, battery, engine hours</td>
+</tr>
+<tr>
+<td><code>temp_compliance</code></td>
+<td>one row per route</td>
+<td>KPI rollup</td>
+<td>route_id, excursion_count (loaded only), excursion_minutes, empty_stops_skipped, compliance_flag</td>
+</tr>
+<tr>
+<td><code>alarm_log</code></td>
+<td>one row per trailer</td>
+<td>KPI rollup</td>
+<td>trailer, alarm_event_total, stops_with_alarms, first_alarm_date, last_alarm_date</td>
+</tr>
+<tr>
+<td><code>customer_scorecard</code></td>
+<td>one row per customer</td>
+<td>KPI rollup</td>
+<td>customer, stops, OTP, dwell, claims, excursions, revenue/cost/margin</td>
+</tr>
+<tr>
+<td><code>customer_churn</code></td>
+<td>one row per customer (latest week)</td>
+<td>KPI rollup</td>
+<td>customer, week, pros, prev_pros, delta_pct, churn_band</td>
+</tr>
+<tr>
+<td><code>customer_concentration</code></td>
+<td>one row per customer (ranked)</td>
+<td>KPI rollup</td>
+<td>rank, customer, revenue, share_pct, cumulative_share_pct</td>
+</tr>
+<tr>
+<td><code>cycle_time</code></td>
+<td>one row per named route</td>
+<td>KPI rollup</td>
+<td>route_name, instances, avg_cycle_min, std_cycle_min, consistency_pct</td>
+</tr>
+<tr>
+<td><code>late_code_analysis</code></td>
+<td>one row per late code</td>
+<td>KPI rollup</td>
+<td>late_code, occurrences, distinct customers/routes/drivers, avg_minutes_late</td>
+</tr>
+<tr>
+<td><code>detention_audit</code></td>
+<td>one row per customer</td>
+<td>KPI rollup</td>
+<td>customer, detention_stops, billable_hours, total_dwell_min</td>
+</tr>
+<tr>
+<td><code>demand_forecast</code></td>
+<td>one row per (customer × forecast week)</td>
+<td>KPI rollup</td>
+<td>customer, forecast_week, horizon, forecast_stops</td>
+</tr>
+<tr>
+<td><code>pipeline_run</code></td>
+<td>one row per pipeline execution</td>
+<td>pipeline</td>
+<td>run_id, status, source_files (JSON), match_rates (JSON)</td>
+</tr>
+<tr>
+<td><code>validation_error</code></td>
+<td>one row per error finding</td>
+<td>validation engine</td>
+<td>transaction_id, source, error_type, error_reason, run_id</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="outputs">Outputs</h2>
+<p>Every pipeline run produces:</p>
+<ul>
+<li><strong><code>data/datascrubb.db</code></strong> — SQLite source-of-truth for the dashboard.</li>
+<li><strong><code>output/Trans_KPI_Validation_&lt;runid&gt;.xlsx</code></strong> — 29-sheet Excel: raw inputs + every KPI table above + INFO + ERROR_REFERENCE.</li>
+<li><strong><code>logs/pipeline.log</code></strong> — full pipeline log.</li>
+</ul>
+<hr>
+<h2 id="validation-rules">Validation rules</h2>
+<p>Three severities:</p>
+<table>
+<thead>
+<tr>
+<th>Severity</th>
+<th>Meaning</th>
+<th>Examples</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>HARD</code></td>
+<td>Pipeline-breaking — investigate immediately</td>
+<td>Duplicate <code>transaction_id</code></td>
+</tr>
+<tr>
+<td><code>SOFT</code></td>
+<td>Data gap — informational</td>
+<td>Missing actual arrival, missing appointment, missing S-Code on plasma stop, reefer temp excursion on a loaded stop</td>
+</tr>
+<tr>
+<td><code>WARNING</code></td>
+<td>Quality concern — monitor</td>
+<td>SAP match rate &lt; 50%, telemetry coverage &lt; 30%, M3PL PRO# not in CRST, PRO# in multiple billing weeks, CRST vs M3PL stop count diverges &gt; 10%</td>
+</tr>
+</tbody>
+</table>
+<p>The Validation Report page lets you filter by run, browse by source, and download.</p>
+<hr>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Likely cause</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ModuleNotFoundError: No module named 'dashboard'</code></td>
+<td>Running <code>python dashboard/app.py</code> directly instead of via Streamlit</td>
+<td><code>python -m streamlit run dashboard/app.py</code>, OR pick the <strong>Streamlit: DataScrubb dashboard</strong> launch config in VS Code</td>
+</tr>
+<tr>
+<td>Dashboard pages blank, no error</td>
+<td>Stale Streamlit session</td>
+<td>Stop Streamlit (Ctrl+C) and restart, then hard-refresh the browser (Ctrl+Shift+R)</td>
+</tr>
+<tr>
+<td><code>sqlite3.IntegrityError: FOREIGN KEY constraint failed</code> during pipeline</td>
+<td>Old code where <code>persist_errors</code> ran before <code>persist_run</code></td>
+<td>Already fixed; pull latest</td>
+</tr>
+<tr>
+<td><code>Cannot remove 'data/datascrubb.db'</code></td>
+<td>Streamlit holding DB open</td>
+<td>Stop Streamlit before deleting the DB</td>
+</tr>
+<tr>
+<td>Pipeline takes 9+ minutes</td>
+<td>Old per-row ORM <code>session.merge()</code></td>
+<td>Already fixed — bulk inserts ~1 sec for 3k rows</td>
+</tr>
+<tr>
+<td>All M3PL match rate is 0%</td>
+<td>CRST <code>order_#</code> not matching M3PL <code>pro_number</code></td>
+<td>Check PRO numbers are numeric in M3PL SUMMARY and align with CRST Order #</td>
+</tr>
+<tr>
+<td>Telemetry coverage 0%</td>
+<td>Telemetry timestamps don't overlap CRST date range, or trailer IDs differ</td>
+<td>Verify file's date range; check <code>Vehicle Name</code> matches CRST <code>trailer</code></td>
+</tr>
+<tr>
+<td>Map page blank</td>
+<td>All stops in current filter have null state, or no stops marked late</td>
+<td>Reset filters; verify <code>state</code> column is populated</td>
+</tr>
+<tr>
+<td>Reefer fuel cost = $0</td>
+<td>Telemetry CSV has <code>'-'</code> in Avg Fuel Rate column for all rows</td>
+<td>Source data limitation; infrastructure ready when fuel data appears</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="architecture">Architecture</h2>
+<pre><code>┌──────────────────────┐
+│   Source files       │  CRST.xlsx, SAP.xlsx, Telemetry.csv, Backup*M3PL*.xlsx
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│  Adapters            │  CrstAdapter, SapAdapter, TelemetryAdapter, M3plAdapter
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│  OTP calculator      │  4 metrics per stop
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│  Matching engine     │  SAP→CRST (S-Code, ±36 h), Telemetry→CRST (trailer, ±120 min),
+│                      │  M3PL→CRST (PRO# = order_#)
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│  KPI engine          │  ~20 KPI functions producing one table each
+│  (kpi/route_kpi.py + │  Route, customer, driver, trailer, lane, billing,
+│   kpi/revenue.py)    │  telemetry health, ops insights — see LOGIC.md
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│  Validation engine   │  9+ rules → SOFT / HARD / WARNING
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│  Persistence         │  SQLite (bulk upserts) + 29-sheet Excel export
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│  Streamlit dashboard │  13 pages — shared filters, heat maps, geo maps
+└──────────────────────┘
+</code></pre>
+<h3 id="module-map">Module map</h3>
+<pre><code>datascrubb/
+  pipeline.py            # Orchestrator
+  config.py              # YAML loader
+  constants.py           # Tolerances, thresholds, column lists
+  models.py              # SQLAlchemy ORM
+  db.py                  # Engine, bulk upserts
+  adapters/
+    base.py              # BaseAdapter
+    crst.py              # Customer extraction, load detection, OTP setup
+    sap.py
+    telemetry.py         # 27 columns: temps, speed, fuel, alarms, battery, etc.
+    m3pl.py              # Multi-section invoice parser
+  matching/
+    engine.py            # MatchResults + orchestration
+    sap_matcher.py       # S-Code + time-window match
+    telemetry_matcher.py # Trailer + window aggregation (25+ metrics)
+  otp/
+    calculator.py        # 4-bucket OTP
+  kpi/
+    route_kpi.py         # ~20 KPI functions (route, driver, trailer, customer, ops)
+    revenue.py           # Customer rate matrix → revenue, margin
+  validation/
+    engine.py
+    rules.py             # 9 rule functions
+    report.py
+  export/
+    excel.py             # 29-sheet writer
+    csv.py
+  utils/
+    geo.py               # Offline US city → lat/lon (geonamescache)
+    columns.py
+    s_code.py
+
+dashboard/
+  app.py                 # Streamlit entry point + page registry (sys.path bootstrap)
+  components/
+    sidebar.py           # Shared filter sidebar (session_state)
+    charts.py            # Plotly chart builders (heat maps, geo maps, OTP-by-x)
+    export_button.py
+  pages/
+    overview.py
+    data_load.py
+    route_kpi.py
+    billing_recon.py     # = &quot;Cost vs Revenue (Margin Analysis)&quot; in nav
+    rate_matrix.py
+    case_variance.py
+    driver_scorecard.py
+    trailer_utilization.py
+    customer_insights.py
+    operations.py        # = &quot;Operations Insights&quot; in nav
+    stop_explorer.py
+    otp_analysis.py
+    sap_matching.py
+    telemetry_view.py
+    validation_report.py
+
+config/
+  default.yaml           # Tolerances, thresholds, fuel price, sample interval
+  sources.yaml           # Per-source loader config
+  customer_rates.yaml    # Revenue rate matrix
+</code></pre>
+<hr>
+<h2 id="for-developers">For developers</h2>
+<h3 id="how-to-add-a-new-kpi">How to add a new KPI</h3>
+<ol>
+<li>Add a function to <code>datascrubb/kpi/route_kpi.py</code> (or a new module under <code>kpi/</code>).</li>
+<li>Re-export from <code>datascrubb/kpi/__init__.py</code>.</li>
+<li>Add a field to <code>MatchResults</code> in <code>datascrubb/matching/engine.py</code>.</li>
+<li>Call it in <code>pipeline.py</code> after the matching step; attach to <code>results.&lt;your_kpi&gt;</code>.</li>
+<li>Add to the <code>_persist_kpi</code> list so it lands in SQLite.</li>
+<li>Add to <code>export_to_excel</code> parameters + the sheet list so it appears in the Excel output.</li>
+<li>Document the formula in <a href="LOGIC.md">LOGIC.md</a>.</li>
+</ol>
+<h3 id="how-to-add-a-new-dashboard-page">How to add a new dashboard page</h3>
+<ol>
+<li>Create <code>dashboard/pages/&lt;page&gt;.py</code> with a <code>render()</code> function.</li>
+<li>Prepend project root to <code>sys.path</code> and call <code>render_global_filters(df)</code> if it should respect shared filters.</li>
+<li>Register in <code>dashboard/app.py</code> <code>PAGES</code> dict and add an <code>elif page == "..."</code> branch.</li>
+</ol>
+<h3 id="conventions">Conventions</h3>
+<ul>
+<li>Use <code>_options_from(df, col)</code> and the <code>apply_to_*</code> helpers in <code>dashboard/components/sidebar.py</code> rather than rolling your own filters.</li>
+<li>Don't pass <code>value=</code> AND <code>key=</code> to the same Streamlit widget — use <code>st.session_state.setdefault()</code> to seed defaults, then refer to widgets by <code>key=</code> only.</li>
+<li>Use <code>bulk_insert_mappings</code> (or <code>pd.to_sql(..., if_exists="replace")</code>) for large writes — never per-row <code>session.merge()</code>.</li>
+<li>Persist KPI rollups via <code>pd.to_sql</code> <strong>outside</strong> the SQLAlchemy session block to avoid SQLite write-lock contention.</li>
+<li>Customer / driver names are normalized to <strong>UPPERCASE + stripped</strong> at extraction.</li>
+</ul>
+<h3 id="tests">Tests</h3>
+<p><code>tests/</code> is wired with pytest packages but doesn't yet have meaningful coverage. To run:</p>
+<pre><code class="language-bash">.venv/Scripts/python.exe -m pytest tests/ -v
+</code></pre>
+<hr>
+<h2 id="license-contact">License &amp; contact</h2>
+<p>Internal tool. Repo: <a href="https://github.com/JCGT500/datascrubb">https://github.com/JCGT500/datascrubb</a>.</p>
+<p>For metric calculation details, see <strong><a href="LOGIC.md">LOGIC.md</a></strong>.</p>
+  </div>
+</body>
+</html>

@@ -1,0 +1,17 @@
+[theme]
+# DataScrubb brand theme — clean, professional, slightly cool/medical feel
+primaryColor = "#2563eb"             # blue-600
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f3f4f6" # slate-100
+textColor = "#1f2937"                # slate-800
+font = "sans serif"
+
+[browser]
+gatherUsageStats = false
+
+[server]
+maxUploadSize = 500   # MB — telemetry CSVs run ~60 MB; default is 200
+runOnSave = false
+
+[runner]
+fastReruns = true

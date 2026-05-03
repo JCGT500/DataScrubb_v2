@@ -1,0 +1,46 @@
+# Customer rate matrix — what we CHARGE customers (revenue side)
+#
+# Each customer entry can specify any of:
+#   rate_per_mile:    $/mile billed to the customer
+#   rate_per_stop:    $/stop billed to the customer
+#   rate_per_cwt:     $/100 lbs (weight basis)
+#   minimum_charge:   minimum invoice per route
+#
+# A "default" entry is used when no customer-specific entry exists.
+# Edit this file directly OR via the Rate Matrix page in the dashboard.
+
+default:
+  rate_per_mile: 2.25
+  rate_per_stop: 95.00
+  rate_per_cwt: 0.00
+  minimum_charge: 250.00
+
+customers:
+  CSL:
+    rate_per_mile: 2.50
+    rate_per_stop: 100.00
+    minimum_charge: 300.00
+  BIOLIFE:
+    rate_per_mile: 2.65
+    rate_per_stop: 105.00
+    minimum_charge: 300.00
+  KEDPLASMA:
+    rate_per_mile: 2.55
+    rate_per_stop: 100.00
+    minimum_charge: 275.00
+  OCTAPHARMA:
+    rate_per_mile: 2.60
+    rate_per_stop: 105.00
+    minimum_charge: 275.00
+  BAXTER:
+    rate_per_mile: 2.45
+    rate_per_stop: 100.00
+    minimum_charge: 275.00
+  RX CROSSROADS:
+    rate_per_mile: 2.20
+    rate_per_stop: 80.00
+    minimum_charge: 200.00
+  CRST INTERNATIONAL:
+    rate_per_mile: 2.10
+    rate_per_stop: 75.00
+    minimum_charge: 200.00

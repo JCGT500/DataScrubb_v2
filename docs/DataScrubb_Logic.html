@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>DataScrubb — Metric Logic Reference</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+:root {
+  --fg: #1f2937;
+  --muted: #6b7280;
+  --bg: #ffffff;
+  --bg-alt: #f9fafb;
+  --border: #e5e7eb;
+  --accent: #2563eb;
+  --code-bg: #f3f4f6;
+  --code-fg: #111827;
+}
+* { box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--fg);
+  background: var(--bg);
+  margin: 0;
+  padding: 0;
+}
+.wrap {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 48px 32px 96px;
+}
+h1, h2, h3, h4 { line-height: 1.25; margin-top: 2em; margin-bottom: 0.5em; font-weight: 600; }
+h1 { font-size: 2.0em; border-bottom: 2px solid var(--border); padding-bottom: 0.3em; margin-top: 0; }
+h2 { font-size: 1.5em; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
+h3 { font-size: 1.2em; }
+h4 { font-size: 1.05em; color: var(--muted); }
+p { margin: 0.75em 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { padding-left: 1.5em; }
+li { margin: 0.25em 0; }
+code, pre {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, "Cascadia Mono", "Roboto Mono", monospace;
+  font-size: 0.92em;
+}
+code {
+  background: var(--code-bg);
+  color: var(--code-fg);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+pre {
+  background: var(--code-bg);
+  color: var(--code-fg);
+  padding: 14px 16px;
+  border-radius: 8px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+}
+pre code { background: transparent; padding: 0; font-size: 0.88em; line-height: 1.5; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.93em;
+}
+th, td {
+  text-align: left;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  vertical-align: top;
+}
+th { background: var(--bg-alt); font-weight: 600; }
+tr:nth-child(2n) td { background: var(--bg-alt); }
+blockquote {
+  border-left: 4px solid var(--accent);
+  background: var(--bg-alt);
+  padding: 8px 14px;
+  color: var(--muted);
+  margin: 1em 0;
+  border-radius: 0 6px 6px 0;
+}
+hr { border: 0; border-top: 1px solid var(--border); margin: 2em 0; }
+.toc {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  padding: 14px 22px;
+  border-radius: 8px;
+  margin: 1em 0 2em;
+}
+.toc ol { margin: 0; }
+.banner {
+  font-size: 0.85em;
+  color: var(--muted);
+  border: 1px dashed var(--border);
+  padding: 8px 14px;
+  border-radius: 6px;
+  margin-bottom: 24px;
+  background: var(--bg-alt);
+}
+@media print {
+  .wrap { max-width: 100%; padding: 0; }
+  pre, code { font-size: 0.78em; }
+  h1 { page-break-before: auto; }
+  h2 { page-break-before: avoid; page-break-after: avoid; }
+  table { page-break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="banner">
+      Single-file documentation — generated from <code>LOGIC.md</code>.
+      Save or email this file; it's fully self-contained.
+    </div>
+    <h1 id="datascrubb-metric-logic-reference">DataScrubb Metric Logic Reference</h1>
+<p>How every metric in the dashboard and Excel export is calculated. Each entry lists:</p>
+<ul>
+<li><strong>What it answers</strong> — the business question.</li>
+<li><strong>Formula</strong> — the math.</li>
+<li><strong>Inputs</strong> — which columns feed it.</li>
+<li><strong>Edge cases</strong> — null handling, empty data, etc.</li>
+<li><strong>Where to override</strong> — config keys / files where you can change defaults.</li>
+<li><strong>Where to find it</strong> — code path + dashboard page + Excel sheet + SQLite table.</li>
+</ul>
+<blockquote>
+<p>All code paths are relative to repo root. All dashboard pages refer to the sidebar nav label.</p>
+</blockquote>
+<hr>
+<h2 id="table-of-contents">Table of contents</h2>
+<ol>
+<li><a href="#stop-level-fields">Stop-level fields</a>
+   - Customer extraction · Loaded-at-stop · Dwell minutes · S-Code</li>
+<li><a href="#on-time-performance-otp">On-Time Performance</a></li>
+<li><a href="#cross-source-matching">Cross-source matching</a>
+   - SAP → CRST · Telemetry → CRST · M3PL → CRST</li>
+<li><a href="#telemetry-stop-aggregations">Telemetry stop aggregations</a>
+   - Idle · Speed · Reefer fuel · Door-while-moving · Alarms · Battery · Engine hrs · Setpoint changes</li>
+<li><a href="#route-level-kpis">Route-level KPIs</a>
+   - Route OTP · Loaded vs deadhead miles · Reefer fuel cost · Temp compliance · Claims risk</li>
+<li><a href="#customer-revenue--margin">Customer revenue &amp; margin</a></li>
+<li><a href="#customer-analytics">Customer analytics</a>
+   - Service scorecard · Churn signal · Concentration risk</li>
+<li><a href="#driver-scorecard">Driver scorecard</a></li>
+<li><a href="#trailer-utilization">Trailer utilization</a></li>
+<li><a href="#lane-profitability">Lane profitability</a></li>
+<li><a href="#operations">Operations</a>
+   - Cycle time · Late code analysis · Detention audit · Demand forecast</li>
+<li><a href="#equipment-utilization">Equipment utilization</a></li>
+<li><a href="#validation-rules">Validation rules</a></li>
+<li><a href="#defaults--thresholds">Defaults &amp; thresholds</a></li>
+</ol>
+<hr>
+<h2 id="stop-level-fields">Stop-level fields</h2>
+<h3 id="customer-extraction">Customer extraction</h3>
+<p><strong>Answers:</strong> "Which customer does this stop belong to?"</p>
+<p><strong>Formula:</strong> From CRST <code>location_date</code> (e.g. <code>BIOLIFE - LENEXA S1304 01/02 07:00</code>):
+1. Strip trailing <code>MM/DD HH:MM</code> (or <code>MM/DD/YYYY HH:MM</code>) timestamp via regex.
+2. If a <code>' - '</code> (space-dash-space) is present, take the part before the <strong>first</strong> <code>-</code>.
+3. Otherwise use the whole stripped string.
+4. Uppercase + strip.</p>
+<p><strong>Examples:</strong>
+| Input | Output |
+|---|---|
+| <code>RX CROSSROADS - DISTRIBUTION 01/01 08:00</code> | <code>RX CROSSROADS</code> |
+| <code>BIOLIFE - LENEXA S1304 01/02 07:00</code> | <code>BIOLIFE</code> |
+| <code>CSL - TUCSON AZ 624 - S9682 01/06 15:00</code> | <code>CSL</code> |
+| <code>CRST International 01/05 07:00</code> | <code>CRST INTERNATIONAL</code> |</p>
+<p><strong>Edge cases:</strong> None / NaN → <code>None</code>. Empty after stripping → returned as empty.</p>
+<p><strong>Override:</strong> Edit the regex <code>_LOC_DATE_TRAIL_RE</code> in <code>datascrubb/adapters/crst.py</code>.</p>
+<p><strong>Code:</strong> <code>datascrubb/adapters/crst.py::extract_customer</code> · <strong>Column:</strong> <code>stop_master.customer</code></p>
+<hr>
+<h3 id="loaded-at-stop-flag">Loaded-at-stop flag</h3>
+<p><strong>Answers:</strong> "Did the trailer have product on board during this stop?"</p>
+<p><strong>Formula:</strong></p>
+<pre><code>loaded_at_stop = 1 if (current_cases &gt; 0)
+                       OR (stop_direction == &quot;SO&quot; AND tender_cases &gt; 0)
+                else 0
+</code></pre>
+<p><strong>Reasoning:</strong>
+- <code>current_cases &gt; 0</code> — cases on board after this stop, so the trailer is loaded going to the next stop.
+- <code>stop_direction == "SO" AND tender_cases &gt; 0</code> — this is a delivery stop where cases were dropped, so the trailer was loaded coming in (even if <code>current_cases</code> is now 0).</p>
+<p><strong>Edge cases:</strong> Null cases → treated as 0. No <code>stop_direction</code> column → <code>loaded_at_stop = 0</code> for all rows.</p>
+<p><strong>Override:</strong> Modify the formula in <code>datascrubb/adapters/crst.py</code> in the CRST <code>normalize()</code> method (look for <code># 1e. Loaded-at-stop flag</code>).</p>
+<p><strong>Code:</strong> <code>datascrubb/adapters/crst.py</code> · <strong>Column:</strong> <code>stop_master.loaded_at_stop</code></p>
+<hr>
+<h3 id="dwell-minutes">Dwell minutes</h3>
+<p><strong>Formula:</strong> <code>(actual_departure − actual_arrival).dt.total_seconds() / 60</code>, rounded to 1 decimal.</p>
+<p><strong>Edge cases:</strong> If <code>actual_departure</code> is missing on a row, dwell is null. If column doesn't exist (older data), dwell is <code>pd.NA</code>.</p>
+<p><strong>Code:</strong> <code>datascrubb/adapters/crst.py</code> · <strong>Column:</strong> <code>stop_master.dwell_minutes</code></p>
+<hr>
+<h3 id="s-code-extraction">S-Code extraction</h3>
+<p><strong>Formula:</strong> Regex <code>S\d{3,5}</code> against <code>location_date</code>. First match wins.</p>
+<p><strong>Used to:</strong> Identify plasma-center stops (<code>stop_type = 'PLASMA_CENTER'</code> if S-code present, else <code>WAREHOUSE</code>).</p>
+<p><strong>Code:</strong> <code>datascrubb/utils/s_code.py::extract_s_code</code> · <strong>Column:</strong> <code>stop_master.s_code</code></p>
+<hr>
+<h2 id="on-time-performance-otp">On-Time Performance (OTP)</h2>
+<p>Four metrics, all stop-level.</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Formula</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>otp_day_pass</code></td>
+<td><code>1</code> if <code>actual_arrival.date() == resolved_appt.date()</code>, else <code>0</code>. NaN if either is missing.</td>
+</tr>
+<tr>
+<td><code>otp_time_pass</code></td>
+<td><code>1</code> if <code>abs(actual_arrival − resolved_appt) ≤ tolerance_minutes</code>, else <code>0</code>. NaN if either is missing.</td>
+</tr>
+<tr>
+<td><code>otp_original_pass</code></td>
+<td>Like <code>otp_day_pass</code> but compared to <code>original_appt</code> (not resolved).</td>
+</tr>
+<tr>
+<td><code>otp_time_original_pass</code></td>
+<td>Like <code>otp_time_pass</code> but vs <code>original_appt</code>.</td>
+</tr>
+</tbody>
+</table>
+<p><code>resolved_appt</code> = <code>current_appt</code> if present, else <code>original_appt</code>.</p>
+<p><code>minutes_from_appt</code> = <code>(actual_arrival − resolved_appt).total_seconds() / 60</code>, rounded.</p>
+<p><strong>Stop performance status</strong> (human-readable):
+- <code>Missing Arrival</code> — no <code>actual_arrival</code>
+- <code>Missing Appointment</code> — no <code>resolved_appt</code>
+- <code>On Time</code> — <code>|minutes_from_appt| ≤ tolerance</code>
+- <code>Early</code> — <code>minutes_from_appt &lt; -tolerance</code>
+- <code>Late</code> — <code>minutes_from_appt &gt; tolerance</code></p>
+<p><strong>Default tolerance:</strong> <strong>120 minutes</strong>. Override at <code>config/default.yaml::pipeline.otp_tolerance_minutes</code>.</p>
+<p><strong>Code:</strong> <code>datascrubb/otp/calculator.py::calculate_otp</code> · <strong>Columns:</strong> <code>otp_day_pass</code>, <code>otp_time_pass</code>, <code>otp_original_pass</code>, <code>otp_time_original_pass</code>, <code>minutes_from_appt</code>, <code>stop_performance_status</code> on <code>stop_master</code>.</p>
+<hr>
+<h2 id="cross-source-matching">Cross-source matching</h2>
+<h3 id="sap-crst">SAP → CRST</h3>
+<p><strong>Answers:</strong> "Which SAP shipment segment corresponds to which CRST stop?"</p>
+<p><strong>Formula:</strong>
+1. Inner-join SAP segments to CRST stops on <code>s_code</code>.
+2. Filter to CRST stops where <code>stop_type == 'PLASMA_CENTER'</code> AND <code>actual_arrival</code> is not null.
+3. For each <code>(document_number, segment_number)</code> SAP row, pick the CRST stop with <strong>smallest</strong> <code>|sap.arrive − crst.actual_arrival|</code> (in hours).
+4. Drop matches where the time difference exceeds <code>max_hours</code> (default <strong>36</strong>).</p>
+<p><strong>Match rate:</strong> <code>matched_segments / total_sap_segments</code>.</p>
+<p><strong>Override:</strong> <code>config/default.yaml::pipeline.sap_match_max_hours</code>.</p>
+<p><strong>Code:</strong> <code>datascrubb/matching/sap_matcher.py::match_sap_to_crst</code> · <strong>Table:</strong> <code>sap_segment</code> · <strong>Page:</strong> SAP Matching</p>
+<hr>
+<h3 id="telemetry-crst">Telemetry → CRST</h3>
+<p><strong>Answers:</strong> "Which telemetry events happened during which stop?"</p>
+<p><strong>Formula:</strong>
+1. Build a stop-time window for each CRST stop:
+   - <code>stop_start_ts = actual_arrival − window_minutes</code> (default <strong>120 min</strong>).
+   - <code>stop_end_ts = actual_departure + window_minutes</code> if departure exists; else <code>actual_arrival + 6 hours</code>.
+2. Inner-join telemetry events to CRST stops on <code>trailer_id == trailer</code>.
+3. Filter to events where <code>event_ts ∈ [stop_start_ts, stop_end_ts]</code>.
+4. Aggregate per <code>transaction_id</code> (see <a href="#telemetry-stop-aggregations">Telemetry stop aggregations</a>).</p>
+<p><strong>Coverage:</strong> <code>unique_transaction_ids_with_telemetry / unique_transaction_ids_in_crst</code>.</p>
+<p><strong>Override:</strong> <code>config/default.yaml::pipeline.telemetry_window_minutes</code>.</p>
+<p><strong>Code:</strong> <code>datascrubb/matching/telemetry_matcher.py::match_telemetry_to_crst</code> · <strong>Table:</strong> <code>telemetry_stop</code></p>
+<hr>
+<h3 id="m3pl-crst">M3PL → CRST</h3>
+<p><strong>Answers:</strong> "Which M3PL billing PRO# corresponds to which CRST route?"</p>
+<p><strong>Formula:</strong> Direct join on <code>m3pl.pro_number == crst.order_#</code> (after string normalisation). No time window — billing is route-level.</p>
+<p><strong>Match rate:</strong> <code>m3pl_pros_found_in_crst / total_m3pl_pros</code>.</p>
+<p><strong>Code:</strong> <code>datascrubb/matching/engine.py</code> (M3PL section) · <strong>Table:</strong> <code>billing_snapshot</code></p>
+<hr>
+<h2 id="telemetry-stop-aggregations">Telemetry stop aggregations</h2>
+<p>Per <code>transaction_id</code>, aggregated from telemetry events that fall in the stop window. Default sample interval = <strong>15 minutes</strong>.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Formula</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>telem_events</code></td>
+<td>Count of events in window</td>
+</tr>
+<tr>
+<td><code>min_amb_temp</code> / <code>max_amb_temp</code> / <code>avg_amb_temp</code></td>
+<td>min / max / mean of <code>Amb Temp</code></td>
+</tr>
+<tr>
+<td><code>min_s1</code> / <code>max_s1</code></td>
+<td>min / max of <code>S1</code> (reefer probe)</td>
+</tr>
+<tr>
+<td><code>avg_tl1</code> / <code>min_tl1</code> / <code>max_tl1</code></td>
+<td>True product probe (separate from S1)</td>
+</tr>
+<tr>
+<td><code>door_open_events</code></td>
+<td>Sum of events where <code>Door 1 == "O"</code></td>
+</tr>
+<tr>
+<td><code>door_open_while_moving</code></td>
+<td>Sum of events where door open AND <code>Speed &gt; 5 mph</code></td>
+</tr>
+<tr>
+<td><code>max_speed</code> / <code>avg_speed</code></td>
+<td>mph</td>
+</tr>
+<tr>
+<td><code>idle_minutes</code></td>
+<td><code>(events with speed == 0 AND engine_rpm &gt; 0) × sample_interval_minutes</code></td>
+</tr>
+<tr>
+<td><code>reefer_runtime_minutes</code></td>
+<td><code>(events with unit_power == "On") × sample_interval_minutes</code></td>
+</tr>
+<tr>
+<td><code>reefer_gallons</code></td>
+<td><code>mean(avg_fuel_rate when On) × runtime_hours</code></td>
+</tr>
+<tr>
+<td><code>reefer_fuel_cost</code></td>
+<td><code>reefer_gallons × fuel_price_per_gallon</code> (default $4.50)</td>
+</tr>
+<tr>
+<td><code>alarm_events</code></td>
+<td>Sum of events where <code>Unit Alarm == "Yes"</code></td>
+</tr>
+<tr>
+<td><code>min_battery</code> / <code>avg_battery</code></td>
+<td>Battery voltage min / mean</td>
+</tr>
+<tr>
+<td><code>max_engine_hours</code> / <code>max_total_hours</code></td>
+<td>Highest reading of each odometer-style counter seen during the window</td>
+</tr>
+<tr>
+<td><code>setpoint_changes</code></td>
+<td><code>max(distinct(SP1) − 1, 0)</code> — the trailer's set point was changed mid-window N times</td>
+</tr>
+<tr>
+<td><code>avg_da_ra_delta</code></td>
+<td><code>mean(RA1 − DA1)</code> — large positive value indicates active load (heat being absorbed)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Overrides:</strong>
+- <code>config/default.yaml::pipeline.telemetry_sample_interval_minutes</code> (default 15)
+- <code>config/default.yaml::pipeline.fuel_price_per_gallon</code> (default 4.50)</p>
+<p><strong>Code:</strong> <code>datascrubb/matching/telemetry_matcher.py</code> · <strong>Table:</strong> <code>telemetry_stop</code></p>
+<hr>
+<h2 id="route-level-kpis">Route-level KPIs</h2>
+<h3 id="route-otp">Route OTP</h3>
+<p><strong>Per route_id (= order_#):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Formula</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>stop_count</code></td>
+<td>Count of stops on the route</td>
+</tr>
+<tr>
+<td><code>otp_time_pass_rate</code></td>
+<td><code>mean(otp_time_pass) × 100</code>, rounded</td>
+</tr>
+<tr>
+<td><code>otp_day_pass_rate</code></td>
+<td><code>mean(otp_day_pass) × 100</code>, rounded</td>
+</tr>
+<tr>
+<td><code>avg_minutes_late</code></td>
+<td><code>mean(minutes_from_appt)</code></td>
+</tr>
+<tr>
+<td><code>dwell_minutes_total</code> / <code>_avg</code></td>
+<td>sum / mean of stop dwell</td>
+</tr>
+<tr>
+<td><code>first_arrival</code></td>
+<td>min(actual_arrival)</td>
+</tr>
+<tr>
+<td><code>last_departure</code></td>
+<td>max(actual_departure) (falls back to actual_arrival)</td>
+</tr>
+<tr>
+<td><code>route_name</code></td>
+<td>mode of <code>route_name</code> over the route's stops</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Code:</strong> <code>datascrubb/kpi/route_kpi.py::compute_route_otp</code> · <strong>Table:</strong> <code>route_kpi</code> · <strong>Page:</strong> Route KPIs</p>
+<hr>
+<h3 id="loaded-vs-deadhead-miles">Loaded vs deadhead miles</h3>
+<p><strong>Answers:</strong> "What share of route miles were driven loaded vs empty?"</p>
+<p><strong>Formula:</strong> Per route_id:
+1. Sort the route's stops by <code>stop_seq</code>.
+2. For each transition <code>stop_n → stop_n+1</code>, the segment is <strong>loaded</strong> if <code>current_cases at stop_n &gt; 0</code>.
+3. <code>loaded_pct = loaded_segments / total_segments × 100</code>.
+4. <code>estimated_loaded_miles = m3pl_total_miles × loaded_pct / 100</code>.
+5. <code>estimated_deadhead_miles = m3pl_total_miles − estimated_loaded_miles</code>.</p>
+<p><strong>Caveats:</strong> This is an <strong>approximation</strong> — CRST has no per-segment mileage. Each segment is assumed to be the same length. A real per-leg mileage source (PC*Miler, GPS distance) would replace this.</p>
+<p><strong>Code:</strong> <code>datascrubb/kpi/route_kpi.py::compute_loaded_miles</code> · <strong>Table:</strong> <code>loaded_miles</code> · <strong>Page:</strong> Route KPIs</p>
+<hr>
+<h3 id="reefer-fuel-cost-per-route">Reefer fuel cost per route</h3>
+<p><strong>Per route_id:</strong> sum of <code>telemetry_stop.reefer_runtime_minutes</code> / <code>reefer_gallons</code> / <code>reefer_fuel_cost</code> across the route's stops.</p>
+<p><strong>Code:</strong> <code>datascrubb/kpi/route_kpi.py::compute_route_reefer_cost</code> · <strong>Table:</strong> <code>route_reefer_cost</code></p>
+<hr>
+<h3 id="temperature-compliance-load-aware">Temperature compliance (load-aware)</h3>
+<p><strong>Answers:</strong> "Are reefer temperatures in spec when product is on board?"</p>
+<p><strong>Formula:</strong> Per route_id, sum over stops of:</p>
+<pre><code>excursion = (loaded_at_stop == 1)
+            AND has_telemetry
+            AND ((min_s1 &lt; setpoint_c − tolerance_c)
+                 OR (max_s1 &gt; setpoint_c + tolerance_c))
+</code></pre>
+<ul>
+<li><code>excursion_count</code> = sum of <code>excursion</code>.</li>
+<li><code>excursion_minutes</code> = <code>excursion_count × min_excursion_minutes</code> (default 15) — conservative lower bound.</li>
+<li><code>empty_stops_skipped</code> = stops where the trailer was empty AND temp was out of range (these don't count toward excursion).</li>
+<li><code>compliance_flag</code> = <code>EXCURSION</code> if <code>excursion_count &gt; 0</code>, else <code>OK</code>.</li>
+</ul>
+<p><strong>Defaults:</strong>
+- <code>setpoint_c = -25</code> (plasma cold-chain)
+- <code>tolerance_c = 5</code> (so ±5°C around setpoint)
+- <code>min_excursion_minutes = 15</code></p>
+<p><strong>Override:</strong> Function args in <code>datascrubb/kpi/route_kpi.py::compute_temp_compliance</code>. Constants at the top of <code>route_kpi.py</code>: <code>PLASMA_TEMP_SETPOINT_C</code>, <code>PLASMA_TEMP_TOLERANCE_C</code>, <code>TEMP_EXCURSION_MIN_MINUTES</code>.</p>
+<p><strong>Code:</strong> <code>datascrubb/kpi/route_kpi.py::compute_temp_compliance</code> · <strong>Table:</strong> <code>temp_compliance</code> · <strong>Page:</strong> Telemetry</p>
+<hr>
+<h3 id="claims-risk-index">Claims-risk index</h3>
+<p><strong>Answers:</strong> "Which routes are most likely to generate a claim?"</p>
+<p><strong>Formula:</strong> Per route_id, three components combined:</p>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Per stop</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>short_cases</code></td>
+<td><code>abs(cases_variance)</code> when <code>cases_variance &lt; 0</code></td>
+</tr>
+<tr>
+<td><code>excursion_stops</code></td>
+<td>1 if loaded AND min_s1 &lt; setpoint − tolerance OR max_s1 &gt; setpoint + tolerance</td>
+</tr>
+<tr>
+<td><code>excess_door_events</code></td>
+<td><code>door_open_events</code> when &gt; 5</td>
+</tr>
+</tbody>
+</table>
+<p>Sum each per route → min-max scale across all routes (each scaled to 0..1) → weighted blend:</p>
+<pre><code>risk_score = (0.40 × short_norm + 0.40 × excursion_norm + 0.20 × door_norm) × 100
+</code></pre>
+<p><strong>Bands:</strong>
+- HIGH ≥ 70
+- MEDIUM ≥ 40
+- LOW &gt; 0
+- NONE = 0</p>
+<p><strong>Code:</strong> <code>datascrubb/kpi/route_kpi.py::compute_claims_risk</code> · <strong>Table:</strong> <code>claims_risk</code> · <strong>Page:</strong> Case Variance</p>
+<hr>
+<h2 id="customer-revenue-margin">Customer revenue &amp; margin</h2>
+<p><strong>The formula on the Cost vs Revenue page:</strong></p>
+<pre><code>revenue_miles  = miles            × rate_per_mile
+revenue_stops  = stop_count       × rate_per_stop
+revenue_weight = (weight_lbs/100) × rate_per_cwt
+revenue_calc   = revenue_miles + revenue_stops + revenue_weight
+revenue        = max(revenue_calc, minimum_charge)
+margin         = revenue − cost
+margin_pct     = margin / revenue × 100
+</code></pre>
+<p><strong>Inputs per route:</strong>
+- <code>miles</code> = sum of M3PL <code>crst_miles</code> for matching <code>pro_number</code>. 0 if no M3PL row.
+- <code>stop_count</code> = count of CRST stops on the route.
+- <code>weight_lbs</code> = sum of CRST <code>sum_of_weight</code>.
+- <code>customer</code> = mode of <code>customer</code> across the route's stops.
+- <code>cost</code> = sum of M3PL <code>billed_amount</code> for matching <code>pro_number</code>. 0 if no M3PL row.</p>
+<p><strong>Rate matrix lookup:</strong>
+1. Read <code>config/customer_rates.yaml</code>.
+2. Look up customer by uppercase exact match.
+3. If found, merge customer entry over default. If not, return default (with <code>_source = "default"</code>).
+4. Apply rates to inputs.</p>
+<p><strong>Override:</strong> Edit <code>config/customer_rates.yaml</code> directly, or upload via the Rate Matrix page in the dashboard.</p>
+<p><strong>Code:</strong> <code>datascrubb/kpi/revenue.py::compute_route_revenue</code>, <code>rate_for</code>, <code>load_rate_matrix</code> · <strong>Table:</strong> <code>route_revenue</code> · <strong>Page:</strong> Cost vs Revenue</p>
+<hr>
+<h2 id="customer-analytics">Customer analytics</h2>
+<h3 id="customer-service-scorecard">Customer service scorecard</h3>
+<p><strong>One row per customer:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Formula</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>stops</code></td>
+<td>count of stops</td>
+</tr>
+<tr>
+<td><code>distinct_routes</code></td>
+<td>nunique of <code>order_#</code></td>
+</tr>
+<tr>
+<td><code>active_days</code></td>
+<td>nunique of <code>arrival_date</code></td>
+</tr>
+<tr>
+<td><code>otp_rate</code></td>
+<td><code>mean(otp_time_pass) × 100</code></td>
+</tr>
+<tr>
+<td><code>late_stops</code></td>
+<td>count where <code>stop_performance_status == 'Late'</code></td>
+</tr>
+<tr>
+<td><code>late_rate_pct</code></td>
+<td><code>late_stops / stops × 100</code></td>
+</tr>
+<tr>
+<td><code>avg_dwell_min</code></td>
+<td>mean of <code>dwell_minutes</code></td>
+</tr>
+<tr>
+<td><code>short_cases_total</code></td>
+<td>sum of <code>abs(cases_variance)</code> where <code>&lt; 0</code></td>
+</tr>
+<tr>
+<td><code>claims_per_stop</code></td>
+<td><code>short_cases_total / stops</code></td>
+</tr>
+<tr>
+<td><code>excursion_stops</code></td>
+<td>count where loaded AND min_s1 &lt; setpoint − tolerance</td>
+</tr>
+<tr>
+<td><code>revenue</code> / <code>cost</code> / <code>margin</code> / <code>margin_pct</code></td>
+<td>sums from <code>route_revenue</code> joined on customer</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Code:</strong> <code>datascrubb/kpi/route_kpi.py::compute_customer_scorecard</code> · <strong>Table:</strong> <code>customer_scorecard</code> · <strong>Page:</strong> Customer Insights</p>
+<hr>
+<h3 id="customer-churn-signal">Customer churn signal</h3>
+<p><strong>Answers:</strong> "Which customers are trending down?"</p>
+<p><strong>Formula:</strong>
+1. For each customer, count distinct PRO# per ISO week.
+2. Sort by week; compute <code>delta_pros = pros − prev_pros</code>, <code>delta_pct = delta_pros / prev_pros × 100</code>.
+3. Take the <strong>latest week</strong> per customer.
+4. Band by <code>delta_pct</code>:
+   - <strong>CHURN_RISK</strong> ≤ -50%
+   - <strong>DECLINING</strong> -20 to -50%
+   - <strong>STABLE</strong> -20 to +50%
+   - <strong>GROWING</strong> ≥ +50%
+   - <strong>NEW</strong> = no prior week</p>
+<p><strong>Caveats:</strong> Needs ≥ 2 weeks of data per customer. If your data window is &lt; 2 weeks, this returns empty.</p>
+<p><strong>Code:</strong> <code>datascrubb/kpi/route_kpi.py::compute_customer_churn_signal</code> · <strong>Table:</strong> <code>customer_churn</code></p>
+<hr>
+<h3 id="customer-concentration-pareto">Customer concentration (Pareto)</h3>
+<p><strong>Per customer, ranked by revenue desc:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Formula</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>share_pct</code></td>
+<td><code>revenue / total_revenue × 100</code></td>
+</tr>
+<tr>
+<td><code>cumulative_share_pct</code></td>
+<td>running sum of <code>share_pct</code></td>
+</tr>
+<tr>
+<td><code>rank</code></td>
+<td>1 = highest revenue</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Use:</strong> "How many customers do I need to lose 80% of revenue?" Find the row where <code>cumulative_share_pct ≥ 80</code>.</p>
+<p><strong>Code:</strong> <code>datascrubb/kpi/route_kpi.py::compute_customer_concentration</code> · <strong>Table:</strong> <code>customer_concentration</code></p>
+<hr>
+<h2 id="driver-scorecard">Driver scorecard</h2>
+<p><strong>Answers:</strong> "Who are my best and worst drivers?"</p>
+<p><strong>Formula:</strong> Per driver (uppercased + stripped):
+1. Aggregate base metrics: <code>total_stops</code>, <code>otp_rate (×100)</code>, <code>late_count</code>, <code>late_rate (% of stops)</code>, <code>avg_dwell</code>, <code>cases_variance_total (sum of |cases_variance|)</code>, <code>cases_variance_per_stop</code>, <code>active_days</code>, <code>max_speed_mph</code>, <code>avg_speed_mph</code>, <code>idle_minutes_total</code>, <code>door_moving_events</code>.
+2. Min-max scale four inputs across the driver pool to 0..1:
+   - <code>n_otp = scale_higher_better(otp_rate)</code>
+   - <code>n_late = scale_lower_better(late_rate)</code>
+   - <code>n_dwell = scale_lower_better(avg_dwell)</code>
+   - <code>n_var = scale_lower_better(cases_variance_per_stop)</code>
+3. Composite: <code>score = (0.40 × n_otp + 0.20 × n_late + 0.20 × n_dwell + 0.20 × n_var) × 100</code>
+4. Rank by score desc.</p>
+<p><strong>Caveats:</strong>
+- Min-max scaling is <strong>relative to the current driver pool</strong> in the dataset. A driver who scores 100 in January isn't "perfect" in absolute terms — they just topped that month's pool.
+- Speed / idle metrics are surfaced for context but <strong>don't currently affect the composite score</strong>. To weight them in, edit the formula in <code>datascrubb/kpi/route_kpi.py::compute_driver_scorecard</code>.</p>
+<p><strong>Code:</strong> <code>datascrubb/kpi/route_kpi.py::compute_driver_scorecard</code> · <strong>Table:</strong> <code>driver_scorecard</code> · <strong>Page:</strong> Driver Scorecard</p>
+<hr>
+<h2 id="trailer-utilization">Trailer utilization</h2>
+<p><strong>Answers:</strong> "Is each trailer earning its keep?"</p>
+<p><strong>Formula:</strong> Per trailer (uppercased + stripped):</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Formula</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>first_seen</code> / <code>last_seen</code></td>
+<td>min / max of <code>arrival_date</code> for this trailer</td>
+</tr>
+<tr>
+<td><code>total_stops</code></td>
+<td>count of stops</td>
+</tr>
+<tr>
+<td><code>loaded_stops</code></td>
+<td>sum of <code>loaded_at_stop</code></td>
+</tr>
+<tr>
+<td><code>loaded_pct</code></td>
+<td><code>loaded_stops / total_stops × 100</code></td>
+</tr>
+<tr>
+<td><code>distinct_routes</code></td>
+<td>nunique of <code>order_#</code></td>
+</tr>
+<tr>
+<td><code>distinct_drivers</code></td>
+<td>nunique of <code>drivers</code></td>
+</tr>
+<tr>
+<td><code>distinct_customers</code></td>
+<td>nunique of <code>customer</code></td>
+</tr>
+<tr>
+<td><code>active_days</code></td>
+<td>nunique of <code>arrival_date.dt.normalize()</code> for this trailer</td>
+</tr>
+<tr>
+<td><code>period_days</code></td>
+<td><code>(max date − min date in dataset) + 1</code> (whole dataset, not per-trailer)</td>
+</tr>
+<tr>
+<td><code>idle_days</code></td>
+<td><code>period_days − active_days</code></td>
+</tr>
+<tr>
+<td><code>utilization_pct</code></td>
+<td><code>active_days / period_days × 100</code></td>
+</tr>
+<tr>
+<td><code>max_consecutive_idle_days</code></td>
+<td>longest gap between consecutive active days for this trailer</td>
+</tr>
+<tr>
+<td><code>total_miles</code></td>
+<td>sum of <code>crst_miles</code> for distinct (trailer, route_id) pairs from M3PL</td>
+</tr>
+<tr>
+<td><code>miles_per_active_day</code></td>
+<td><code>total_miles / active_days</code></td>
+</tr>
+<tr>
+<td><code>last_known_state</code> / <code>last_known_city</code></td>
+<td>state / city of the trailer's most recent stop</td>
+</tr>
+<tr>
+<td><code>alarm_event_total</code></td>
+<td>sum of <code>telemetry_stop.alarm_events</code> for this trailer's stops</td>
+</tr>
+<tr>
+<td><code>min_battery_seen</code> / <code>avg_battery</code></td>
+<td>min / mean of telemetry battery voltage</td>
+</tr>
+<tr>
+<td><code>max_engine_hours</code> / <code>max_total_hours</code></td>
+<td>highest counter readings observed</td>
+</tr>
+<tr>
+<td><code>reefer_fuel_cost_total</code> / <code>reefer_gallons_total</code></td>
+<td>sum of stop-level reefer cost / gallons</td>
+</tr>
+<tr>
+<td><code>idle_minutes_total</code></td>
+<td>sum of <code>idle_minutes</code></td>
+</tr>
+<tr>
+<td><code>door_open_while_moving_total</code> / <code>setpoint_changes_total</code></td>
+<td>sums</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Caveats:</strong>
+- <code>period_days</code> is <strong>dataset-wide</strong> — a trailer that joined mid-month gets penalized in <code>utilization_pct</code>. Future fix: per-trailer in-service window.
+- A "DUMMY" trailer prefix in the data (e.g. DUMMY1, DUMMY4) appears to be a placeholder for missing trailer info; treat their utilization as "no truck assigned" rather than "idle asset".</p>
+<p><strong>Code:</strong> <code>datascrubb/kpi/route_kpi.py::compute_trailer_utilization</code> · <strong>Table:</strong> <code>trailer_utilization</code> · <strong>Page:</strong> Trailer Utilization</p>
+<hr>
+<h2 id="lane-profitability">Lane profitability</h2>
+<p><strong>Answers:</strong> "Which origin → destination lanes make money?"</p>
+<p><strong>Formula:</strong>
+1. For each route, find:
+   - <code>origin_state</code> = <code>state</code> of the <strong>first PU</strong> stop (sorted by stop_seq + actual_arrival).
+   - <code>dest_state</code> = <code>state</code> of the <strong>last SO</strong> stop.
+2. Aggregate <code>route_revenue</code> (cost, revenue, margin) by <code>(origin_state, dest_state)</code>.
+3. <code>margin_pct = margin / revenue × 100</code>.</p>
+<p><strong>Caveats:</strong> Routes where origin or destination state is null are excluded.</p>
+<p><strong>Code:</strong> <code>datascrubb/kpi/route_kpi.py::compute_lane_profitability</code> · <strong>Table:</strong> <code>lane_profitability</code> · <strong>Page:</strong> Cost vs Revenue (Lane Profitability tab)</p>
+<hr>
+<h2 id="operations">Operations</h2>
+<h3 id="cycle-time-consistency">Cycle time consistency</h3>
+<p><strong>Answers:</strong> "How predictable is each named route?"</p>
+<p><strong>Formula:</strong> Per route_name (must have ≥ 2 PRO# instances):
+1. Per PRO# instance: <code>cycle_minutes = (last_departure − first_arrival).total_seconds() / 60</code>. Drop if ≤ 0.
+2. Aggregate across instances:
+   - <code>instances</code> = nunique of <code>order_#</code>
+   - <code>avg_cycle_min</code> / <code>median_cycle_min</code> / <code>std_cycle_min</code> / <code>min</code> / <code>max</code>
+   - <code>consistency_pct = clip(100 − std_cycle_min / avg_cycle_min × 100, 0, 100)</code></p>
+<p><strong>Reading the metric:</strong> higher consistency_pct = more predictable. 100 = identical cycle every time. 0 = std dev exceeds the mean (very erratic).</p>
+<p><strong>Code:</strong> <code>datascrubb/kpi/route_kpi.py::compute_cycle_time_consistency</code> · <strong>Table:</strong> <code>cycle_time</code> · <strong>Page:</strong> Operations Insights</p>
+<hr>
+<h3 id="late-code-analysis">Late code analysis</h3>
+<p><strong>Per CRST <code>late_code</code> value (uppercased + stripped):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Formula</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>occurrences</code></td>
+<td>count of stops with this code</td>
+</tr>
+<tr>
+<td><code>distinct_customers</code> / <code>distinct_routes</code> / <code>distinct_drivers</code></td>
+<td>nunique counts</td>
+</tr>
+<tr>
+<td><code>avg_minutes_late</code></td>
+<td>mean of <code>minutes_from_appt</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Use:</strong> rank by occurrences to see what's actually causing the lateness.</p>
+<p><strong>Code:</strong> <code>datascrubb/kpi/route_kpi.py::compute_late_code_analysis</code> · <strong>Table:</strong> <code>late_code_analysis</code></p>
+<hr>
+<h3 id="detention-audit">Detention audit</h3>
+<p><strong>Answers:</strong> "How many billable hours of detention are we eating?"</p>
+<p><strong>Formula:</strong>
+1. Filter <code>stop_master</code> to stops where <code>dwell_minutes &gt; threshold_minutes</code> (default <strong>120 min</strong> = 2 hours).
+2. Group by customer:
+   - <code>detention_stops</code> = count of long-dwell stops
+   - <code>total_dwell_min</code> = sum of all long dwells (the <em>full</em> dwell, not just the over-threshold portion)
+   - <code>avg_dwell_min</code> / <code>max_dwell_min</code> = stats
+   - <code>billable_hours</code> = <code>total_dwell_min / 60</code></p>
+<p><strong>Caveats:</strong> Reports the <strong>full dwell</strong>, not just the time beyond the threshold. To bill only the over-threshold portion, change <code>total_dwell_min</code> to <code>sum(dwell_minutes − threshold)</code>.</p>
+<p><strong>Override:</strong> <code>compute_detention_audit(stops_df, threshold_minutes=120)</code> — change the kwarg if you bill at a different free-time threshold.</p>
+<p><strong>Code:</strong> <code>datascrubb/kpi/route_kpi.py::compute_detention_audit</code> · <strong>Table:</strong> <code>detention_audit</code></p>
+<hr>
+<h3 id="demand-forecast">Demand forecast</h3>
+<p><strong>Answers:</strong> "What's our 4-week stop projection per customer?"</p>
+<p><strong>Formula:</strong> Per customer (≥ 3 weeks of data required):
+1. Bucket arrivals into ISO weeks; count stops per week.
+2. Simple exponential smoothing with <code>α = 0.5</code>:
+   <code>s_0 = stops[week_0]
+   s_t = α × stops[week_t] + (1 − α) × s_{t-1}</code>
+3. The final smoothed value <code>s_n</code> is the forecast for <strong>every</strong> future week in the horizon (no trend component).
+4. Output rows for <code>horizon = 1..4</code>.</p>
+<p><strong>Caveats:</strong>
+- Flat forecast (no trend) — this is intentional for an MVP. Customers with strong trends will be over- or under-projected.
+- α=0.5 = equal weight on current vs prior smoothed value. Increase for more responsive, decrease for smoother.
+- Won't capture seasonality (weekly cyclic patterns).</p>
+<p><strong>Override:</strong> <code>compute_demand_forecast(stops_df, horizon_weeks=4)</code> and the <code>alpha=0.5</code> constant in the function body.</p>
+<p><strong>Code:</strong> <code>datascrubb/kpi/route_kpi.py::compute_demand_forecast</code> · <strong>Table:</strong> <code>demand_forecast</code></p>
+<hr>
+<h2 id="equipment-utilization">Equipment utilization</h2>
+<p>Per <strong>tractor</strong>, <strong>trailer</strong>, <strong>driver</strong> (three separate tables, all from <code>compute_equipment_util</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Formula</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>total_stops</code></td>
+<td>count of stops</td>
+</tr>
+<tr>
+<td><code>distinct_routes</code></td>
+<td>nunique of <code>order_#</code></td>
+</tr>
+<tr>
+<td><code>otp_rate</code></td>
+<td><code>mean(otp_time_pass) × 100</code></td>
+</tr>
+<tr>
+<td><code>total_miles</code></td>
+<td>sum of <code>crst_miles</code> for distinct (equipment, route) pairs from M3PL</td>
+</tr>
+<tr>
+<td><code>active_days</code></td>
+<td>nunique of <code>arrival_date</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Code:</strong> <code>datascrubb/kpi/route_kpi.py::compute_equipment_util</code> · <strong>Tables:</strong> <code>equip_util_tractor</code>, <code>equip_util_trailer</code>, <code>equip_util_driver</code> · <strong>Page:</strong> Route KPIs (Equipment &amp; Driver Utilization tabs)</p>
+<hr>
+<h2 id="validation-rules">Validation rules</h2>
+<p>The validation engine emits findings into <code>validation_error</code> with three severities:</p>
+<table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>Severity</th>
+<th>Trigger</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Missing Actual Arrival</code></td>
+<td>SOFT</td>
+<td><code>stop_master.actual_arrival is null</code></td>
+</tr>
+<tr>
+<td><code>Missing Appointment</code></td>
+<td>SOFT</td>
+<td><code>stop_master.resolved_appt is null</code></td>
+</tr>
+<tr>
+<td><code>Missing S_Code for plasma stop</code></td>
+<td>SOFT</td>
+<td><code>stop_type == 'PLASMA_CENTER' AND s_code is null</code></td>
+</tr>
+<tr>
+<td><code>Duplicate TransactionID</code></td>
+<td>HARD</td>
+<td><code>transaction_id</code> appears twice — pipeline is leaking duplicates</td>
+</tr>
+<tr>
+<td><code>SAP match rate &lt;50%</code></td>
+<td>WARNING</td>
+<td><code>(sap_match_flag == 'MATCHED').mean() &lt; 0.50</code></td>
+</tr>
+<tr>
+<td><code>Telemetry coverage &lt;30%</code></td>
+<td>WARNING</td>
+<td><code>telemetry_stops / crst_stops &lt; 0.30</code></td>
+</tr>
+<tr>
+<td><code>BILLING_DUP_PRO</code></td>
+<td>WARNING</td>
+<td>Same PRO# in more than one billing week</td>
+</tr>
+<tr>
+<td><code>M3PL_PRO_NOT_IN_CRST</code></td>
+<td>WARNING</td>
+<td>M3PL PRO# has no matching CRST <code>order_#</code></td>
+</tr>
+<tr>
+<td><code>TEMP_EXCURSION</code></td>
+<td>SOFT</td>
+<td>One per route flagged in <code>temp_compliance</code> (load-aware)</td>
+</tr>
+<tr>
+<td><code>MILES_VARIANCE &gt; 10%</code></td>
+<td>WARNING</td>
+<td><code>abs(crst_stop_count − m3pl_stop_count) / m3pl_stop_count &gt; 10%</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Code:</strong> <code>datascrubb/validation/rules.py</code> · <strong>Table:</strong> <code>validation_error</code> · <strong>Page:</strong> Validation Report</p>
+<hr>
+<h2 id="defaults-thresholds">Defaults &amp; thresholds</h2>
+<p>All defaults live in <code>config/default.yaml</code>:</p>
+<pre><code class="language-yaml">pipeline:
+  otp_tolerance_minutes: 120          # ± minutes around appointment for &quot;on time&quot;
+  sap_match_max_hours: 36             # SAP arrive vs CRST arrival must be within this
+  telemetry_window_minutes: 120       # ± window around stop for telemetry events
+  telemetry_min_pings_per_stop: 5     # (currently unused; reserved for future filter)
+  telemetry_sample_interval_minutes: 15  # used to convert event counts → runtime minutes
+  fuel_price_per_gallon: 4.50         # used for reefer fuel cost calc
+</code></pre>
+<p>Plus per-rule constants in code:</p>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Default</th>
+<th>File</th>
+<th>Used by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PLASMA_TEMP_SETPOINT_C</code></td>
+<td>-25</td>
+<td><code>kpi/route_kpi.py</code></td>
+<td>temp compliance, claims risk</td>
+</tr>
+<tr>
+<td><code>PLASMA_TEMP_TOLERANCE_C</code></td>
+<td>5</td>
+<td><code>kpi/route_kpi.py</code></td>
+<td>temp compliance, claims risk</td>
+</tr>
+<tr>
+<td><code>TEMP_EXCURSION_MIN_MINUTES</code></td>
+<td>15</td>
+<td><code>kpi/route_kpi.py</code></td>
+<td>temp compliance</td>
+</tr>
+<tr>
+<td>Detention threshold</td>
+<td>120 min</td>
+<td><code>compute_detention_audit</code> kwarg</td>
+<td>detention audit</td>
+</tr>
+<tr>
+<td>Forecast horizon</td>
+<td>4 weeks</td>
+<td><code>compute_demand_forecast</code> kwarg</td>
+<td>demand forecast</td>
+</tr>
+<tr>
+<td>Forecast α</td>
+<td>0.5</td>
+<td>inside <code>compute_demand_forecast</code></td>
+<td>demand forecast</td>
+</tr>
+<tr>
+<td>Driver score weights</td>
+<td>40/20/20/20</td>
+<td>inside <code>compute_driver_scorecard</code></td>
+<td>driver scorecard</td>
+</tr>
+<tr>
+<td>Claims-risk weights</td>
+<td>40/40/20</td>
+<td>inside <code>compute_claims_risk</code></td>
+<td>claims risk</td>
+</tr>
+<tr>
+<td>Door-open "excess" threshold</td>
+<td>&gt; 5 events/stop</td>
+<td>inside <code>compute_claims_risk</code></td>
+<td>claims risk</td>
+</tr>
+<tr>
+<td>Speed threshold for "moving"</td>
+<td>&gt; 5 mph</td>
+<td><code>telemetry_matcher.py</code></td>
+<td>door-open-while-moving</td>
+</tr>
+<tr>
+<td>Min routes for cycle time</td>
+<td>≥ 2 instances</td>
+<td>inside <code>compute_cycle_time_consistency</code></td>
+<td>cycle time</td>
+</tr>
+<tr>
+<td>Min weeks for forecast</td>
+<td>≥ 3</td>
+<td>inside <code>compute_demand_forecast</code></td>
+<td>demand forecast</td>
+</tr>
+<tr>
+<td>Customer churn bands</td>
+<td>-50 / -20 / +50</td>
+<td>inside <code>compute_customer_churn_signal</code></td>
+<td>churn signal</td>
+</tr>
+<tr>
+<td>Concentration warning</td>
+<td>80% (visual line only)</td>
+<td>hardcoded in chart</td>
+<td>concentration page</td>
+</tr>
+</tbody>
+</table>
+<p>Anything in code (not YAML) requires a code change to override. We can promote any of these to <code>default.yaml</code> if you want them tunable without redeployment — just say which.</p>
+  </div>
+</body>
+</html>

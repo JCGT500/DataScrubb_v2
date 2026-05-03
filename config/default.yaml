@@ -1,0 +1,100 @@
+database:
+  path: data/datascrubb.db
+
+pipeline:
+  otp_tolerance_minutes: 120
+  sap_match_max_hours: 36
+  telemetry_window_minutes: 120
+  telemetry_min_pings_per_stop: 5
+  telemetry_sample_interval_minutes: 15
+  fuel_price_per_gallon: 4.50
+
+reefer:
+  setpoint_c: -25
+  tolerance_c: 5
+  excursion_min_minutes: 15
+  door_open_speed_threshold_mph: 5
+
+claims_risk:
+  weight_short_cases: 0.40
+  weight_excursion: 0.40
+  weight_door_events: 0.20
+  door_event_count_threshold: 5
+  band_high: 70
+  band_medium: 40
+
+driver_scorecard:
+  weight_otp: 0.40
+  weight_late_rate: 0.20
+  weight_dwell: 0.20
+  weight_cases_variance: 0.20
+
+forecast:
+  horizon_weeks: 4
+  alpha: 0.5
+  min_weeks_history: 3
+
+detention:
+  threshold_minutes: 120
+
+churn:
+  band_churn_risk_pct: -50
+  band_declining_pct: -20
+  band_growing_pct: 50
+
+capacity:
+  min_observed_stops: 5
+  use_max_for_observed: true
+  fill_pct_cap: 200
+  observed_quantile: 0.95
+
+validation:
+  sap_match_rate_floor: 0.50
+  telemetry_coverage_floor: 0.30
+  miles_variance_threshold_pct: 10
+
+map:
+  default_max_stops_render: 1500
+  default_height_px: 900
+
+stop_classification:
+  # Priority 1: any stop with an S-code is PLASMA_CENTER (regardless of name).
+  use_s_code_for_plasma: true
+  # Priority 2-N: customer-name regex (case-insensitive). First match wins.
+  rules:
+    - {class: DISTRIBUTION_CENTER, pattern: "RX CROSSROADS"}
+    - {class: DISTRIBUTION_CENTER, pattern: "WAREHOUSE|WHSE|DISTRIBUTION"}
+    - {class: INTERNAL_BASE, pattern: "CRST INTERNATIONAL|CRST LOUISVILLE|^CRST "}
+    - {class: INTERNAL_BASE, pattern: "THERMOKING|FUEL|TERMINAL|^BASE"}
+  default_class: OTHER
+
+warehouse_inclusion:
+  # When false, the KPI excludes stops where stop_class != PLASMA_CENTER.
+  # Customer-facing KPIs default to false; fleet/asset KPIs default to true.
+  otp:                     false
+  dwell:                   false
+  customer_scorecard:      false
+  customer_churn:          false
+  customer_concentration:  false
+  claims_risk:             false
+  reefer_compliance:       false
+  detention_audit:         false
+  late_code_analysis:      false
+  cycle_time:              false
+  route_kpi:               true
+  trailer_utilization:     true
+  driver_scorecard:        true
+  lane_profitability:      true
+  loaded_miles:            true
+  trailer_revenue_weekly:  true
+  route_revenue_weekly:    true
+  miles_variance:          true
+  alarm_log:               true
+  route_reefer_cost:       true
+
+logging:
+  level: INFO
+  file: logs/pipeline.log
+
+export:
+  output_dir: output/

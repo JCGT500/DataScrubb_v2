@@ -1,0 +1,50 @@
+sources:
+  crst:
+    adapter: crst
+    file_type: excel
+    header_detection:
+      method: keyword_search
+      keywords:
+        - order
+        - location
+        - actual
+        - original
+        - current
+      max_rows: 15
+    required_columns:
+      - "order_#"
+      - location_date
+      - original_appt
+      - current_appt
+      - actual_arrival
+
+  sap:
+    adapter: sap
+    file_type: excel
+    header_detection:
+      method: first_row
+    required_columns:
+      - document_number
+      - segment_number
+      - shipper_search_term
+      - pick_up_date
+      - arrive
+
+  telemetry:
+    adapter: telemetry
+    file_type: csv
+    header_detection:
+      method: fixed_row
+      row: 6
+    required_columns:
+      - "date_&_time"
+      - vehicle_name
+      - door_1
+      - amb_temp
+
+  m3pl:
+    adapter: m3pl
+    file_type: excel
+    header_detection:
+      method: multi_section
+    required_columns: []

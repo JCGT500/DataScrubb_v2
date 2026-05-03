@@ -1,0 +1,22 @@
+# Trailer capacity reference. UPPERCASE trailer IDs match stop_master.trailer.
+#
+# Capacity priority for the fill % calc:
+#   1. Explicit config entry under `trailers:` below
+#   2. Observed 95th-percentile current_cases / sum_of_weight from history
+#      (only used when the trailer has >= 5 stops)
+#   3. The `default:` block below
+#
+# Edit this file directly OR via the Trailer Capacity tab on the Rate Matrix page.
+
+default:
+  max_cases: 800
+  max_weight_lbs: 44000
+
+trailers:
+  # Add trailer-specific capacity overrides here. Examples:
+  # RX001:
+  #   max_cases: 1000
+  #   max_weight_lbs: 44000
+  # RX0277:
+  #   max_cases: 4000
+  #   max_weight_lbs: 44000

@@ -1,0 +1,48 @@
+# Claude Code
+.claude/
+
+# Database
+*.db
+*.db-wal
+*.db-shm
+data/
+
+# Output files
+output/
+*.xlsx
+!Version_2.7.md
+
+# Source data files in the project root (customer / business data — never commit)
+*.csv
+DataScrubb.zip
+
+# Logs
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp files
+*.tmp
+*.bak
