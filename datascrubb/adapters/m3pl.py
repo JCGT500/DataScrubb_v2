@@ -140,7 +140,15 @@ def _build_rate_map(header_row: pd.Series, col_map: dict[str, int]) -> dict[str,
 def _read_billing_week_end(file_path: Path) -> pd.Timestamp | None:
     """Pull the billing week-end date from cell C2 of the INVOICE sheet."""
     try:
-        invoice = pd.read_excel(file_path, sheet_name="INVOICE", header=None, nrows=3)
+        xl = pd.ExcelFile(file_path)
+        target = next(
+            (s for s in xl.sheet_names if str(s).strip().lower() == "invoice"),
+            None,
+        )
+        if target is None:
+            logger.debug("No INVOICE sheet in %s; will fall back to filename date parse", file_path.name)
+            return None
+        invoice = pd.read_excel(xl, sheet_name=target, header=None, nrows=3)
     except Exception as exc:
         logger.warning("Could not read INVOICE sheet from %s: %s", file_path.name, exc)
         return None
@@ -186,13 +194,35 @@ class M3plAdapter(BaseAdapter):
         return self._billing_week_end
 
     def load_raw(self, file_path: Path) -> pd.DataFrame:
-        """Read SUMMARY sheet (no header). Stash week-end date and source filename."""
+        """Read SUMMARY sheet (no header). Stash week-end date and source filename.
+
+        Sheet name lookup is case-insensitive and tolerates a few common variants
+        ("SUMMARY", "Summary", "summary", "Summary Sheet"). If no match is
+        found, the error message lists the actual sheet names so the user can
+        rename or pick the right file.
+        """
         self._billing_week_end = _read_billing_week_end(file_path)
         self._source_file = file_path.name
-        df = pd.read_excel(file_path, sheet_name="SUMMARY", header=None)
+
+        xl = pd.ExcelFile(file_path)
+        target = None
+        for name in xl.sheet_names:
+            n = str(name).strip().lower()
+            if n == "summary" or n.startswith("summary"):
+                target = name
+                break
+        if target is None:
+            raise ValueError(
+                f"M3PL file '{file_path.name}' has no SUMMARY sheet. "
+                f"Sheets found: {xl.sheet_names}. "
+                "Expected an M3PL invoice workbook with INVOICE + SUMMARY sheets — "
+                "double-check that this file is an M3PL backup (not CRST, SAP, or telemetry)."
+            )
+
+        df = pd.read_excel(xl, sheet_name=target, header=None)
         logger.info(
-            "M3PL %s loaded: SUMMARY shape=%s, week_end=%s",
-            file_path.name, df.shape, self._billing_week_end,
+            "M3PL %s loaded: %s shape=%s, week_end=%s",
+            file_path.name, target, df.shape, self._billing_week_end,
         )
         return df
 
