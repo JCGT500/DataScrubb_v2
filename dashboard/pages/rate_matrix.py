@@ -38,6 +38,21 @@ def _build_template() -> pd.DataFrame:
     )
 
 
+@st.cache_data(show_spinner=False)
+def _build_template_csv_bytes() -> bytes:
+    """Cached CSV bytes — built once per Streamlit session."""
+    return _build_template().to_csv(index=False).encode("utf-8")
+
+
+@st.cache_data(show_spinner=False)
+def _build_template_xlsx_bytes() -> bytes:
+    """Cached XLSX bytes — Excel writer is heavy, only build once per session."""
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as w:
+        _build_template().to_excel(w, sheet_name="Rates", index=False)
+    return buf.getvalue()
+
+
 def _read_uploaded(file) -> pd.DataFrame:
     """Read a CSV or Excel upload into a DataFrame, normalising column names."""
     name = file.name.lower()
@@ -159,22 +174,18 @@ def _render_rate_matrix():
             key="rate_matrix_upload",
         )
     with ucol2:
-        # Template download
-        tmpl = _build_template()
-        csv_bytes = tmpl.to_csv(index=False).encode("utf-8")
+        # Template downloads — bytes are cached so the heavy openpyxl write
+        # only runs once per Streamlit session, not on every page render.
         st.download_button(
             "Download CSV template",
-            data=csv_bytes,
+            data=_build_template_csv_bytes(),
             file_name="customer_rates_template.csv",
             mime="text/csv",
             help="Empty template with the column headers we expect.",
         )
-        xl_buf = io.BytesIO()
-        with pd.ExcelWriter(xl_buf, engine="openpyxl") as w:
-            tmpl.to_excel(w, sheet_name="Rates", index=False)
         st.download_button(
             "Download Excel template",
-            data=xl_buf.getvalue(),
+            data=_build_template_xlsx_bytes(),
             file_name="customer_rates_template.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )

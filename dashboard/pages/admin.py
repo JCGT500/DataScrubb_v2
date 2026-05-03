@@ -410,26 +410,25 @@ def render():
     )
 
 
-def _render_sharepoint_tab(full: dict) -> None:
-    """SharePoint admin tab — connection, folders, sync settings, manual sync."""
-    from datascrubb.config import load_config
-    from datascrubb.sharepoint import (
-        GraphClient,
-        GraphError,
-        apply_backup_retention,
-        list_db_backups,
-        list_source_files,
-        push_db_backup,
-        restore_db_from_backup,
-    )
-    from datascrubb.sharepoint.auth import (
-        SharepointAuthError,
-        complete_device_flow,
-        initiate_device_flow,
-        sign_out,
-        signed_in_account,
-    )
+@st.cache_data(ttl=60, show_spinner=False)
+def _cached_signed_in_account(tenant_id: str, client_id: str) -> dict | None:
+    """Cache the MSAL signed-in-account check for 60s so it doesn't fire on every render."""
+    if not tenant_id or not client_id:
+        return None
+    try:
+        from datascrubb.sharepoint.auth import signed_in_account
+        return signed_in_account(tenant_id, client_id)
+    except Exception:
+        return None
 
+
+def _render_sharepoint_tab(full: dict) -> None:
+    """SharePoint admin tab — connection, folders, sync settings, manual sync.
+
+    Performance: this function runs on EVERY admin-page render (Streamlit
+    renders all tab bodies regardless of which tab is visible). To keep it
+    cheap, heavy imports + MSAL calls are gated behind `enabled` or cached.
+    """
     st.subheader("SharePoint integration")
     st.caption(
         "Pull weekly source files from a SharePoint folder and back the SQLite DB up after every "
@@ -455,13 +454,43 @@ def _render_sharepoint_tab(full: dict) -> None:
         placeholder="https://contoso.sharepoint.com/sites/datascrubb",
     )
 
-    # Sign-in status
-    acct = None
-    if tenant_id and client_id:
-        try:
-            acct = signed_in_account(tenant_id, client_id)
-        except Exception as e:
-            st.warning(f"Could not check sign-in status: {e}")
+    # When disabled, render the form but skip every heavy operation below.
+    # Save still works so the user can configure values before turning it on.
+    if not enabled:
+        def _save_disabled():
+            update_block(block, {
+                "enabled": False,
+                "tenant_id": tenant_id, "client_id": client_id, "site_url": site_url,
+                "source_folder": _g(cur, "source_folder", "Shared Documents/DataScrubb/Sources"),
+                "db_backup_folder": _g(cur, "db_backup_folder", "Shared Documents/DataScrubb/Backups"),
+                "auto_push_db": _g(cur, "auto_push_db", True),
+                "auto_push_excel": _g(cur, "auto_push_excel", True),
+                "keep_last_n_backups": _g(cur, "keep_last_n_backups", 12),
+            })
+        _tab_save_reset(block, _save_disabled, "sp")
+        st.caption("Enable the integration to access folder settings, sign-in, and manual sync.")
+        return
+
+    # ─── Heavy lifting only when enabled ────────────────────────
+    from datascrubb.config import load_config
+    from datascrubb.sharepoint import (
+        GraphClient,
+        GraphError,
+        apply_backup_retention,
+        list_db_backups,
+        list_source_files,
+        push_db_backup,
+        restore_db_from_backup,
+    )
+    from datascrubb.sharepoint.auth import (
+        SharepointAuthError,
+        complete_device_flow,
+        initiate_device_flow,
+        sign_out,
+    )
+
+    # Cached so we don't hit MSAL/disk on every render
+    acct = _cached_signed_in_account(tenant_id, client_id) if (tenant_id and client_id) else None
     if acct:
         st.success(f"✅ Signed in as **{acct.get('username', acct.get('home_account_id', 'unknown'))}**")
     else:
@@ -487,6 +516,7 @@ def _render_sharepoint_tab(full: dict) -> None:
             try:
                 complete_device_flow(st.session_state["sp_flow"])
                 st.session_state.pop("sp_flow", None)
+                _cached_signed_in_account.clear()
                 st.success("Signed in successfully.")
                 st.rerun()
             except SharepointAuthError as e:
@@ -495,6 +525,7 @@ def _render_sharepoint_tab(full: dict) -> None:
     if acct and sb3.button("Sign out", key="sp_signout"):
         try:
             sign_out(tenant_id, client_id)
+            _cached_signed_in_account.clear()
             st.success("Signed out.")
             st.rerun()
         except Exception as e:

@@ -36,15 +36,20 @@ def render():
         _render_local_upload()
 
 
+@st.cache_data(ttl=10, show_spinner=False)
 def _sharepoint_available() -> bool:
+    """Cached check (10s TTL) so we don't read YAML on every page render."""
     try:
         from datascrubb.config import load_config
         cfg = load_config()
+        sp = getattr(cfg, "sharepoint", None)
+        if sp is None:
+            return False
         return bool(
-            cfg.sharepoint.enabled
-            and cfg.sharepoint.tenant_id
-            and cfg.sharepoint.client_id
-            and cfg.sharepoint.site_url
+            getattr(sp, "enabled", False)
+            and getattr(sp, "tenant_id", "")
+            and getattr(sp, "client_id", "")
+            and getattr(sp, "site_url", "")
         )
     except Exception:
         return False

@@ -1,143 +1,121 @@
 database:
   path: data/datascrubb.db
-
 pipeline:
   otp_tolerance_minutes: 120
   sap_match_max_hours: 36
   telemetry_window_minutes: 120
   telemetry_min_pings_per_stop: 5
   telemetry_sample_interval_minutes: 15
-  fuel_price_per_gallon: 4.50
-
+  fuel_price_per_gallon: 4.5
 reefer:
   setpoint_c: -25
   tolerance_c: 5
   excursion_min_minutes: 15
   door_open_speed_threshold_mph: 5
-
 claims_risk:
-  weight_short_cases: 0.40
-  weight_excursion: 0.40
-  weight_door_events: 0.20
+  weight_short_cases: 0.4
+  weight_excursion: 0.4
+  weight_door_events: 0.2
   door_event_count_threshold: 5
   band_high: 70
   band_medium: 40
-
 driver_scorecard:
-  weight_otp: 0.40
-  weight_late_rate: 0.20
-  weight_dwell: 0.20
-  weight_cases_variance: 0.20
-
+  weight_otp: 0.4
+  weight_late_rate: 0.2
+  weight_dwell: 0.2
+  weight_cases_variance: 0.2
 forecast:
   horizon_weeks: 4
   alpha: 0.5
   min_weeks_history: 3
-
 detention:
   threshold_minutes: 120
-
 churn:
   band_churn_risk_pct: -50
   band_declining_pct: -20
   band_growing_pct: 50
-
 capacity:
   min_observed_stops: 5
   use_max_for_observed: true
   fill_pct_cap: 200
   observed_quantile: 0.95
-
 validation:
-  sap_match_rate_floor: 0.50
-  telemetry_coverage_floor: 0.30
+  sap_match_rate_floor: 0.5
+  telemetry_coverage_floor: 0.3
   miles_variance_threshold_pct: 10
-
 map:
   default_max_stops_render: 1500
   default_height_px: 900
-
 vanguard:
   cargo_max_temp_c: -20
-  # Evap delta (DA1 − RA1) bands per Vanguard SOP
   evap_delta_healthy_min: -8
   evap_delta_healthy_max: -5
   evap_delta_degrading_max: -3
   evap_delta_significant_max: -1
-  evap_delta_drift_critical_c: 3   # >3°C drift in <48h → minimum VCI 75
-  # Setpoint compliance (RA1 within ±1°C of S1)
+  evap_delta_drift_critical_c: 3
   compliance_band_critical_pct: 75
   compliance_baseline_target_pct: 92
-  # Defrost cycle expectations (TK timed defrost ~every 4 hours)
   defrost_baseline_per_day: 6
   defrost_elevated_per_day: 8
   defrost_abnormal_per_day: 9
   defrost_max_duration_min: 40
-  # VCI subscore weights (must sum to 1.0)
-  weight_rh: 0.40
-  weight_dr: 0.20
-  weight_ts: 0.20
-  weight_abhf: 0.20
-  # VCI severity bands
+  weight_rh: 0.4
+  weight_dr: 0.2
+  weight_ts: 0.2
+  weight_abhf: 0.2
   band_green_max: 24
   band_yellow_max: 49
   band_orange_max: 74
   band_red_max: 99
-  # Per-unit baseline rolling window
   baseline_window_days: 30
   baseline_min_clean_days: 7
   default_baseline_evap_delta: -6.5
   default_baseline_compliance_pct: 90
-
 stop_classification:
-  # Priority 1: any stop with an S-code is PLASMA_CENTER (regardless of name).
   use_s_code_for_plasma: true
-  # Priority 2-N: customer-name regex (case-insensitive). First match wins.
   rules:
-    - {class: DISTRIBUTION_CENTER, pattern: "RX CROSSROADS"}
-    - {class: DISTRIBUTION_CENTER, pattern: "WAREHOUSE|WHSE|DISTRIBUTION"}
-    - {class: INTERNAL_BASE, pattern: "CRST INTERNATIONAL|CRST LOUISVILLE|^CRST "}
-    - {class: INTERNAL_BASE, pattern: "THERMOKING|FUEL|TERMINAL|^BASE"}
+  - class: DISTRIBUTION_CENTER
+    pattern: RX CROSSROADS
+  - class: DISTRIBUTION_CENTER
+    pattern: WAREHOUSE|WHSE|DISTRIBUTION
+  - class: INTERNAL_BASE
+    pattern: 'CRST INTERNATIONAL|CRST LOUISVILLE|^CRST '
+  - class: INTERNAL_BASE
+    pattern: THERMOKING|FUEL|TERMINAL|^BASE
   default_class: OTHER
-
 warehouse_inclusion:
-  # When false, the KPI excludes stops where stop_class != PLASMA_CENTER.
-  # Customer-facing KPIs default to false; fleet/asset KPIs default to true.
-  otp:                     false
-  dwell:                   false
-  customer_scorecard:      false
-  customer_churn:          false
-  customer_concentration:  false
-  claims_risk:             false
-  reefer_compliance:       false
-  detention_audit:         false
-  late_code_analysis:      false
-  cycle_time:              false
-  route_kpi:               true
-  trailer_utilization:     true
-  driver_scorecard:        true
-  lane_profitability:      true
-  loaded_miles:            true
-  trailer_revenue_weekly:  true
-  route_revenue_weekly:    true
-  miles_variance:          true
-  alarm_log:               true
-  route_reefer_cost:       true
-
+  otp: true
+  dwell: true
+  customer_scorecard: true
+  customer_churn: true
+  customer_concentration: true
+  claims_risk: true
+  reefer_compliance: true
+  detention_audit: true
+  late_code_analysis: true
+  cycle_time: true
+  route_kpi: true
+  trailer_utilization: true
+  driver_scorecard: true
+  lane_profitability: true
+  loaded_miles: true
+  trailer_revenue_weekly: true
+  route_revenue_weekly: true
+  miles_variance: true
+  alarm_log: true
+  route_reefer_cost: true
 sharepoint:
   enabled: false
-  tenant_id: ""
-  client_id: ""
-  site_url: ""                                                # e.g. https://contoso.sharepoint.com/sites/datascrubb
-  source_folder: "Shared Documents/DataScrubb/Sources"        # where weekly source files live
-  db_backup_folder: "Shared Documents/DataScrubb/Backups"     # where DB snapshots are pushed after each run
-  auto_push_db: true                                          # upload data/datascrubb.db after every successful pipeline run
-  auto_push_excel: true                                       # also upload the Trans_KPI_Validation_<runid>.xlsx
-  keep_last_n_backups: 12                                     # delete older backups; set 0 to keep all
-
+  tenant_id: ''
+  client_id: ''
+  site_url: ''
+  source_folder: Shared Documents/DataScrubb/Sources
+  db_backup_folder: Shared Documents/DataScrubb/Backups
+  auto_push_db: true
+  auto_push_excel: true
+  keep_last_n_backups: 12
 logging:
   level: INFO
   file: logs/pipeline.log
-
 export:
   output_dir: output/

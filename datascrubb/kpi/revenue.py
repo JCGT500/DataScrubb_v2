@@ -223,51 +223,49 @@ def compute_route_revenue(
     routes["rate_source"] = [r.get("_source", "default") for r in rate_rows]
 
     # ─── Per-row revenue ─────────────────────────────────────────
-    # Flat: miles*$/mi + stops*$/stop + (lbs/100)*$/cwt, floored at minimum_charge
-    # Banded: rate_matrix lookup + stops*$/stop, floored at minimum_charge
-    revenues = np.zeros(len(routes), dtype=float)
-    rev_miles = np.zeros(len(routes), dtype=float)
-    rev_stops = np.zeros(len(routes), dtype=float)
-    rev_weight = np.zeros(len(routes), dtype=float)
-    rev_banded = np.full(len(routes), np.nan, dtype=float)
+    # Flat branch is fully vectorized (the common case). Banded routes are
+    # patched in afterward via a small per-row loop.
 
-    for i, (_, row) in enumerate(routes.iterrows()):
-        r = rate_rows.iloc[i]
-        if r.get("pricing_model") == "banded" and r.get("rate_matrix"):
+    # Flat formula applied to every row first
+    routes["revenue_miles"] = (routes["miles"] * routes["rate_per_mile"]).round(2)
+    routes["revenue_stops"] = (routes["stop_count"] * routes["rate_per_stop"]).round(2)
+    routes["revenue_weight"] = (routes["weight_lbs"] / 100.0 * routes["rate_per_cwt"]).round(2)
+    routes["revenue_banded"] = np.nan
+
+    # Banded overrides: only iterate the (typically small) subset of banded routes
+    is_banded = routes["pricing_model"] == "banded"
+    if is_banded.any():
+        rev_banded_col = routes["revenue_banded"].copy()
+        rev_stops_col = routes["revenue_stops"].copy()
+        for i in routes.index[is_banded]:
+            r = rate_rows.iloc[routes.index.get_loc(i)]
+            if not r.get("rate_matrix"):
+                continue
             try:
                 base = lookup_banded_rate(
-                    row["miles"], row["weight_lbs"],
+                    routes.at[i, "miles"], routes.at[i, "weight_lbs"],
                     r["mile_bands"], r["weight_bands"], r["rate_matrix"],
                 )
             except (ValueError, KeyError, TypeError) as e:
                 logger.warning(
                     "Banded rate lookup failed for customer=%s route=%s: %s — falling back to 0",
-                    row["customer"], row["route_id"], e,
+                    routes.at[i, "customer"], routes.at[i, "route_id"], e,
                 )
                 base = 0.0
-            rev_banded[i] = round(base, 2) if not np.isnan(base) else np.nan
-            stops_dollars = row["stop_count"] * row["rate_per_stop"]
-            rev_stops[i] = round(stops_dollars, 2)
-            calc = (0.0 if np.isnan(base) else base) + stops_dollars
-            revenues[i] = round(max(calc, row["minimum_charge"]), 2)
-        else:
-            rm = round(row["miles"] * row["rate_per_mile"], 2)
-            rs = round(row["stop_count"] * row["rate_per_stop"], 2)
-            rw = round(row["weight_lbs"] / 100.0 * row["rate_per_cwt"], 2)
-            rev_miles[i] = rm
-            rev_stops[i] = rs
-            rev_weight[i] = rw
-            revenues[i] = round(max(rm + rs + rw, row["minimum_charge"]), 2)
+            rev_banded_col.at[i] = round(base, 2) if not np.isnan(base) else np.nan
+            stops_dollars = routes.at[i, "stop_count"] * routes.at[i, "rate_per_stop"]
+            rev_stops_col.at[i] = round(stops_dollars, 2)
+        routes["revenue_banded"] = rev_banded_col
+        routes["revenue_stops"] = rev_stops_col
+        # Banded routes: zero out the flat-only fields so revenue_calc is correct
+        routes.loc[is_banded, "revenue_miles"] = 0.0
+        routes.loc[is_banded, "revenue_weight"] = 0.0
 
-    routes["revenue_miles"] = rev_miles
-    routes["revenue_stops"] = rev_stops
-    routes["revenue_weight"] = rev_weight
-    routes["revenue_banded"] = rev_banded
     routes["revenue_calc"] = (
         routes["revenue_miles"] + routes["revenue_stops"] + routes["revenue_weight"]
         + routes["revenue_banded"].fillna(0.0)
     ).round(2)
-    routes["revenue"] = revenues
+    routes["revenue"] = np.maximum(routes["revenue_calc"], routes["minimum_charge"]).round(2)
     routes["margin"] = (routes["revenue"] - routes["cost"]).round(2)
     routes["margin_pct"] = np.where(
         routes["revenue"].abs() > 0,
