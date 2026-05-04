@@ -52,6 +52,14 @@ from two distinct sources — see the headers for provenance.
 - The Excel export is the slowest single step (~3 minutes for 32 sheets). Don't add more sheets without asking. Use `xlsxwriter` instead of `openpyxl` if you need a speed-up.
 - The pipeline takes ~4 minutes end-to-end on the user's typical monthly dataset. Anything that pushes it past 10 minutes needs explanation.
 
+### Load detection
+
+- The flag downstream code reads is **`loaded_at_stop_v2`** (multi-signal + manual-override aware), not the legacy `loaded_at_stop`. The legacy column stays for backwards compat but new consumers go through `_loaded_series()` in `route_kpi.py`.
+- When adding a new excursion-flagging or load-gated KPI, gate on `loaded_at_stop_v2`, not `loaded_at_stop`.
+- The setpoint signal is **asymmetric** by design: `max_setpoint > 0°C` strongly votes empty (trailer was offline), but cold setpoint does NOT vote loaded (drivers keep empty trailers cold for the next load). Don't "fix" this to be symmetric.
+- `load_override` table is the only KPI table that's NOT dropped/recreated on each pipeline run. Don't put it in any `if_exists='replace'` calls.
+- New columns we add to `stop_master` need a one-off ALTER TABLE script for existing prod DBs (see `scripts/migrate_load_signals.py` for the pattern).
+
 ### Auto-accepted prompts (used by ExitPlanMode `allowedPrompts`)
 
 When approving plans, these are the categories we routinely allow without per-call confirmation:

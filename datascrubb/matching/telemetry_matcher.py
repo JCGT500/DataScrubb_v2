@@ -155,6 +155,11 @@ def match_telemetry_to_crst(
         aggs["max_total_hours"] = ("total_hours", "max")
     if "sp1" in candidates.columns:
         aggs["setpoint_changes"] = ("sp1", lambda s: max(int(s.dropna().nunique()) - 1, 0))
+        # Setpoint min/max — strong load-state signal (per user domain knowledge):
+        # max_setpoint > 0 → trailer was off / unloaded at some point in the window
+        # min_setpoint ≤ -20 → trailer was actively cooling for plasma at some point
+        aggs["min_setpoint_c"] = ("sp1", "min")
+        aggs["max_setpoint_c"] = ("sp1", "max")
     if "_da_ra_delta" in candidates.columns:
         aggs["avg_da_ra_delta"] = ("_da_ra_delta", "mean")
     # ─── Vanguard derived per-stop fields ───

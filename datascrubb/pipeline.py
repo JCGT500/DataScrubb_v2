@@ -282,6 +282,40 @@ class Pipeline:
                 cached_telemetry_stop=cached_telemetry_stop,
             )
 
+            # ─── Step 3b: Multi-signal load detection ───
+            # Compute the 5 load signals + confidence per stop, then apply
+            # any persisted manual overrides from the load_override table.
+            # Result columns are merged onto results.crst so they flow into
+            # downstream KPI computation and stop_master persistence.
+            from datascrubb.kpi.load_detection import (
+                apply_load_overrides,
+                compute_load_signals,
+                read_load_overrides,
+            )
+            ld_cfg = self.config.load_detection
+            load_sigs = compute_load_signals(
+                results.crst,
+                sap_segments_df=results.sap_segment,
+                telemetry_stops_df=results.telemetry_stop,
+                confidence_threshold=ld_cfg.confidence_threshold,
+                reefer_max_cargo_temp_c=ld_cfg.reefer_max_cargo_temp_c,
+                enabled_signals=ld_cfg.enabled_signals(),
+            )
+            overrides = read_load_overrides(engine)
+            load_sigs = apply_load_overrides(load_sigs, overrides)
+            n_overrides = int(load_sigs["load_override_applied"].sum()) if "load_override_applied" in load_sigs else 0
+            n_disputed = int(load_sigs["load_state_disputed"].sum())
+            logger.info(
+                "Load detection: %d/%d disputed, %d manual override(s) applied",
+                n_disputed, len(load_sigs), n_overrides,
+            )
+            # Merge new columns onto crst (drop overlapping transaction_id from sigs)
+            sig_cols = [c for c in load_sigs.columns if c != "transaction_id"]
+            results.crst = results.crst.merge(
+                load_sigs[["transaction_id"] + sig_cols],
+                on="transaction_id", how="left",
+            )
+
             # ─── Step 4: Compute route-level KPIs (before validation so KPI-derived rules can fire) ───
             cfg = self.config
             inc = cfg.warehouse_inclusion

@@ -558,6 +558,10 @@ customers:
 </ol>
 <p>After editing, <strong>re-run the pipeline</strong> (Load Data → Run) to recompute revenue and margin.</p>
 <p>For the <strong>revenue formula</strong> see <a href="LOGIC.md#customer-revenue">LOGIC.md → Customer Revenue</a>.</p>
+<h3 id="load-detection-multi-signal-is-the-trailer-loaded-verdict">Load Detection (multi-signal "is the trailer loaded?" verdict)</h3>
+<p>CRST case counts can be wrong (cancelled loads, repositioning legs, yard moves), and the legacy <code>loaded_at_stop</code> flag trusted them absolutely → false-positive temperature excursions. The multi-signal v2 verdict combines up to 6 independent signals (CRST cases, SAP paperwork, reefer cargo-temp, setpoint pattern, route sequence walk, BOL field) into a 0-100 confidence score and a <code>loaded_at_stop_v2</code> flag that excursion logic uses by default.</p>
+<p>The setpoint pattern signal is especially good at catching the "trailer was off / parked" case (max_setpoint &gt; 0°C) — exactly the false positive that often shows at internal bases.</p>
+<p>When auto-detection still gets it wrong, use <strong>🔎 Diagnostics → Load Review</strong> to mark a stop as known empty/loaded — overrides persist across pipeline runs. Tunable in <strong>Admin → Load Detection</strong>. See <a href="LOGIC.md#loaded-at-stop-flag-multi-signal-v2">LOGIC.md → Loaded-at-stop</a> for full signal definitions.</p>
 <h3 id="observability-kpi-calculation-audit-trail">Observability (KPI calculation audit trail)</h3>
 <p>Optional. When enabled (<code>observability.enabled: true</code> in <code>config/default.yaml</code>, or via Admin → Observability), every wrapped KPI calculation writes a row to <code>data/observability.db</code> with inputs, output, duration, and any quality-check results. Use the <strong>🔍 Diagnostics → Observability</strong> page to:</p>
 <ul>

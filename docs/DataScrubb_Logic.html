@@ -175,19 +175,87 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 2em 0; }
 <p><strong>Override:</strong> Edit the regex <code>_LOC_DATE_TRAIL_RE</code> in <code>datascrubb/adapters/crst.py</code>.</p>
 <p><strong>Code:</strong> <code>datascrubb/adapters/crst.py::extract_customer</code> · <strong>Column:</strong> <code>stop_master.customer</code></p>
 <hr>
-<h3 id="loaded-at-stop-flag">Loaded-at-stop flag</h3>
+<h3 id="loaded-at-stop-flag-multi-signal-v2">Loaded-at-stop flag (multi-signal v2)</h3>
 <p><strong>Answers:</strong> "Did the trailer have product on board during this stop?"</p>
-<p><strong>Formula:</strong></p>
+<p>DataScrubb computes TWO load flags:</p>
+<ul>
+<li><strong><code>loaded_at_stop</code></strong> (legacy, single-signal) — kept for backwards compat</li>
+<li><strong><code>loaded_at_stop_v2</code></strong> (current, multi-signal) — what excursion / claims-risk / driver-scorecard logic uses by default. Falls back to legacy when v2 is missing.</li>
+</ul>
+<h4 id="legacy-single-signal-loaded_at_stop">Legacy (single-signal): <code>loaded_at_stop</code></h4>
 <pre><code>loaded_at_stop = 1 if (current_cases &gt; 0)
                        OR (stop_direction == &quot;SO&quot; AND tender_cases &gt; 0)
                 else 0
 </code></pre>
-<p><strong>Reasoning:</strong>
-- <code>current_cases &gt; 0</code> — cases on board after this stop, so the trailer is loaded going to the next stop.
-- <code>stop_direction == "SO" AND tender_cases &gt; 0</code> — this is a delivery stop where cases were dropped, so the trailer was loaded coming in (even if <code>current_cases</code> is now 0).</p>
-<p><strong>Edge cases:</strong> Null cases → treated as 0. No <code>stop_direction</code> column → <code>loaded_at_stop = 0</code> for all rows.</p>
-<p><strong>Override:</strong> Modify the formula in <code>datascrubb/adapters/crst.py</code> in the CRST <code>normalize()</code> method (look for <code># 1e. Loaded-at-stop flag</code>).</p>
-<p><strong>Code:</strong> <code>datascrubb/adapters/crst.py</code> · <strong>Column:</strong> <code>stop_master.loaded_at_stop</code></p>
+<p>This trusts CRST case counts absolutely. <strong>Real-world problem:</strong> when CRST data lags reality (cancelled loads, repositioning legs, yard moves at internal bases), the flag is wrong → false-positive temperature excursions.</p>
+<h4 id="multi-signal-v2-loaded_at_stop_v2">Multi-signal (v2): <code>loaded_at_stop_v2</code></h4>
+<p>Combines up to 6 independent signals. Each votes 0 (empty), 1 (loaded), or NaN (no data — abstains).</p>
+<table>
+<thead>
+<tr>
+<th>Signal</th>
+<th>Source</th>
+<th>Logic</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>load_signal_crst</code></td>
+<td><code>stop_master</code></td>
+<td>The legacy logic above (kept as one of the votes)</td>
+<td>always 0/1</td>
+</tr>
+<tr>
+<td><code>load_signal_sap</code></td>
+<td><code>sap_segment</code></td>
+<td>Matched SAP segment exists with <code>cases_count &gt; 0</code> OR <code>actual_weight &gt; 0</code></td>
+<td>NaN when no SAP match</td>
+</tr>
+<tr>
+<td><code>load_signal_reefer</code></td>
+<td><code>telemetry_stop</code></td>
+<td><code>max_cargo_temp ≤ -15°C</code> (frozen mass present) → 1; <code>max_cargo_temp ≥ 0°C</code> → 0; middle band → NaN</td>
+<td>NaN when no telemetry or ambient-band cargo</td>
+</tr>
+<tr>
+<td><code>load_signal_setpoint</code></td>
+<td><code>telemetry_stop</code></td>
+<td><code>max_setpoint &gt; 0°C</code> → 0 (trailer was off / unloaded); else NaN. Asymmetric: cold setpoint is NOT a loaded signal because drivers keep empty trailers cold for the next load.</td>
+<td>per-user domain knowledge</td>
+</tr>
+<tr>
+<td><code>load_signal_sequence</code></td>
+<td>derived</td>
+<td>Walk each route in <code>stop_seq</code> order. PICKUP at PLASMA_CENTER → loaded; DELIVERY at DISTRIBUTION_CENTER / INTERNAL_BASE → empty after; state carries forward</td>
+<td>NaN when route can't be walked</td>
+</tr>
+<tr>
+<td><code>load_signal_bol</code></td>
+<td><code>stop_master.bol</code></td>
+<td>Non-null + non-empty → 1</td>
+<td><strong>Off by default</strong> — the CRST <code>bol</code> field is populated for every stop, so it doesn't discriminate in our typical data. Enable in Admin if your CRST export differs</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Confidence</strong>:</p>
+<pre><code>non_nan = count of signals that voted (not NaN)
+positives = count of signals voting 1
+load_confidence = round(100 * positives / non_nan)        # 0..100
+auto_loaded = 1 if load_confidence &gt;= confidence_threshold else 0   # default threshold 50
+load_state_disputed = 1 if 0 &lt; positives &lt; non_nan else 0
+</code></pre>
+<p><strong>Manual override</strong> — the dashboard's <strong>🔎 Load Review</strong> page lets users mark a stop as known-empty or known-loaded. Overrides persist in the <code>load_override</code> table across pipeline runs. Final verdict:</p>
+<pre><code>loaded_at_stop_v2 = manual_override_value if override exists for transaction_id
+                    else auto_loaded
+</code></pre>
+<p><strong>Edge cases:</strong>
+- Stops with no auxiliary signals (no SAP match, no telemetry) effectively fall back to CRST + sequence (or just CRST if the route can't be walked).
+- Setpoint signal handles the user's most common false-positive case (trailers turned off at internal base — <code>max_setpoint &gt; 0</code> strongly indicates "not actively cooling cargo").
+- Reefer signal handles cases where cargo zone temperatures don't show frozen mass.
+- Disputed stops appear in the Load Review dashboard for one-click override.</p>
+<p><strong>Tunable in Admin → Load Detection:</strong> <code>confidence_threshold</code>, per-signal enable toggles, reefer cold threshold, setpoint thresholds.</p>
+<p><strong>Code:</strong> <code>datascrubb/kpi/load_detection.py::compute_load_signals</code> · <strong>Columns:</strong> <code>stop_master.load_signal_*</code>, <code>load_confidence</code>, <code>load_state_disputed</code>, <code>loaded_at_stop_v2</code> · <strong>Page:</strong> 🔎 Diagnostics → Load Review</p>
 <hr>
 <h3 id="dwell-minutes">Dwell minutes</h3>
 <p><strong>Formula:</strong> <code>(actual_departure − actual_arrival).dt.total_seconds() / 60</code>, rounded to 1 decimal.</p>

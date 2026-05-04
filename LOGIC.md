@@ -68,26 +68,62 @@ How every metric in the dashboard and Excel export is calculated. Each entry lis
 
 ---
 
-### Loaded-at-stop flag
+### Loaded-at-stop flag (multi-signal v2)
 
 **Answers:** "Did the trailer have product on board during this stop?"
 
-**Formula:**
+DataScrubb computes TWO load flags:
+
+- **`loaded_at_stop`** (legacy, single-signal) — kept for backwards compat
+- **`loaded_at_stop_v2`** (current, multi-signal) — what excursion / claims-risk / driver-scorecard logic uses by default. Falls back to legacy when v2 is missing.
+
+#### Legacy (single-signal): `loaded_at_stop`
+
 ```
 loaded_at_stop = 1 if (current_cases > 0)
                        OR (stop_direction == "SO" AND tender_cases > 0)
                 else 0
 ```
 
-**Reasoning:**
-- `current_cases > 0` — cases on board after this stop, so the trailer is loaded going to the next stop.
-- `stop_direction == "SO" AND tender_cases > 0` — this is a delivery stop where cases were dropped, so the trailer was loaded coming in (even if `current_cases` is now 0).
+This trusts CRST case counts absolutely. **Real-world problem:** when CRST data lags reality (cancelled loads, repositioning legs, yard moves at internal bases), the flag is wrong → false-positive temperature excursions.
 
-**Edge cases:** Null cases → treated as 0. No `stop_direction` column → `loaded_at_stop = 0` for all rows.
+#### Multi-signal (v2): `loaded_at_stop_v2`
 
-**Override:** Modify the formula in `datascrubb/adapters/crst.py` in the CRST `normalize()` method (look for `# 1e. Loaded-at-stop flag`).
+Combines up to 6 independent signals. Each votes 0 (empty), 1 (loaded), or NaN (no data — abstains).
 
-**Code:** `datascrubb/adapters/crst.py` · **Column:** `stop_master.loaded_at_stop`
+| Signal | Source | Logic | Notes |
+|---|---|---|---|
+| `load_signal_crst` | `stop_master` | The legacy logic above (kept as one of the votes) | always 0/1 |
+| `load_signal_sap` | `sap_segment` | Matched SAP segment exists with `cases_count > 0` OR `actual_weight > 0` | NaN when no SAP match |
+| `load_signal_reefer` | `telemetry_stop` | `max_cargo_temp ≤ -15°C` (frozen mass present) → 1; `max_cargo_temp ≥ 0°C` → 0; middle band → NaN | NaN when no telemetry or ambient-band cargo |
+| `load_signal_setpoint` | `telemetry_stop` | `max_setpoint > 0°C` → 0 (trailer was off / unloaded); else NaN. Asymmetric: cold setpoint is NOT a loaded signal because drivers keep empty trailers cold for the next load. | per-user domain knowledge |
+| `load_signal_sequence` | derived | Walk each route in `stop_seq` order. PICKUP at PLASMA_CENTER → loaded; DELIVERY at DISTRIBUTION_CENTER / INTERNAL_BASE → empty after; state carries forward | NaN when route can't be walked |
+| `load_signal_bol` | `stop_master.bol` | Non-null + non-empty → 1 | **Off by default** — the CRST `bol` field is populated for every stop, so it doesn't discriminate in our typical data. Enable in Admin if your CRST export differs |
+
+**Confidence**:
+```
+non_nan = count of signals that voted (not NaN)
+positives = count of signals voting 1
+load_confidence = round(100 * positives / non_nan)        # 0..100
+auto_loaded = 1 if load_confidence >= confidence_threshold else 0   # default threshold 50
+load_state_disputed = 1 if 0 < positives < non_nan else 0
+```
+
+**Manual override** — the dashboard's **🔎 Load Review** page lets users mark a stop as known-empty or known-loaded. Overrides persist in the `load_override` table across pipeline runs. Final verdict:
+```
+loaded_at_stop_v2 = manual_override_value if override exists for transaction_id
+                    else auto_loaded
+```
+
+**Edge cases:**
+- Stops with no auxiliary signals (no SAP match, no telemetry) effectively fall back to CRST + sequence (or just CRST if the route can't be walked).
+- Setpoint signal handles the user's most common false-positive case (trailers turned off at internal base — `max_setpoint > 0` strongly indicates "not actively cooling cargo").
+- Reefer signal handles cases where cargo zone temperatures don't show frozen mass.
+- Disputed stops appear in the Load Review dashboard for one-click override.
+
+**Tunable in Admin → Load Detection:** `confidence_threshold`, per-signal enable toggles, reefer cold threshold, setpoint thresholds.
+
+**Code:** `datascrubb/kpi/load_detection.py::compute_load_signals` · **Columns:** `stop_master.load_signal_*`, `load_confidence`, `load_state_disputed`, `loaded_at_stop_v2` · **Page:** 🔎 Diagnostics → Load Review
 
 ---
 

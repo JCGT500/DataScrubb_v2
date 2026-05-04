@@ -21,6 +21,24 @@ PLASMA_TEMP_TOLERANCE_C = 5.0
 TEMP_EXCURSION_MIN_MINUTES = 15
 
 
+def _loaded_series(stops_df: pd.DataFrame, prefer_v2: bool = True) -> pd.Series:
+    """Pick the appropriate loaded-at-stop column.
+
+    When ``prefer_v2 = True`` (the default) and the multi-signal column
+    ``loaded_at_stop_v2`` is present and non-empty, use it. Otherwise fall
+    back to the legacy ``loaded_at_stop``. This lets the excursion logic
+    flip between modes via the ``pipeline.excursion_uses_v2`` config flag
+    without breaking older databases that haven't been migrated yet.
+    """
+    if (
+        prefer_v2
+        and "loaded_at_stop_v2" in stops_df.columns
+        and stops_df["loaded_at_stop_v2"].notna().any()
+    ):
+        return stops_df["loaded_at_stop_v2"].fillna(0).astype(int)
+    return stops_df.get("loaded_at_stop", pd.Series(0, index=stops_df.index)).fillna(0).astype(int)
+
+
 def _coerce_route_key(stops_df: pd.DataFrame) -> pd.Series:
     """Return a string Series with the route key (order_#)."""
     if "order_#" in stops_df.columns:
@@ -516,6 +534,7 @@ def compute_claims_risk(
     door_event_count_threshold: int = 5,
     band_high: float = 70,
     band_medium: float = 40,
+    prefer_v2: bool = True,
 ) -> pd.DataFrame:
     """Per-route claims-risk index (0-100).
 
@@ -543,7 +562,7 @@ def compute_claims_risk(
     cv = pd.to_numeric(df.get("cases_variance"), errors="coerce").fillna(0)
     df["_short_cases"] = cv.where(cv < 0, 0).abs()
 
-    is_loaded = df.get("loaded_at_stop", pd.Series(0, index=df.index)).fillna(0).astype(int) == 1
+    is_loaded = _loaded_series(df, prefer_v2=prefer_v2) == 1
     min_s1 = pd.to_numeric(df.get("min_s1"), errors="coerce")
     max_s1 = pd.to_numeric(df.get("max_s1"), errors="coerce")
     excursion = (
@@ -798,7 +817,7 @@ def compute_customer_scorecard(
     cv = pd.to_numeric(df.get("cases_variance"), errors="coerce").fillna(0)
     df["_short"] = cv.where(cv < 0, 0).abs()
     df["_late"] = (df.get("stop_performance_status") == "Late").astype(int)
-    is_loaded = df.get("loaded_at_stop", pd.Series(0, index=df.index)).fillna(0).astype(int) == 1
+    is_loaded = _loaded_series(df) == 1
     min_s1 = pd.to_numeric(df.get("min_s1"), errors="coerce")
     df["_excursion_loaded"] = (
         is_loaded & ((min_s1 < (PLASMA_TEMP_SETPOINT_C - PLASMA_TEMP_TOLERANCE_C)))
@@ -1026,7 +1045,7 @@ def compute_trailer_utilization(
 
     # Per-trailer base aggregates
     df["route_id"] = _coerce_route_key(df)
-    is_loaded = df.get("loaded_at_stop", pd.Series(0, index=df.index)).fillna(0).astype(int)
+    df["_loaded_eff"] = _loaded_series(df)
 
     base = (
         df.groupby("trailer")
@@ -1034,7 +1053,7 @@ def compute_trailer_utilization(
             first_seen=("arrival_dt", "min"),
             last_seen=("arrival_dt", "max"),
             total_stops=("transaction_id", "count"),
-            loaded_stops=("loaded_at_stop", lambda s: int(pd.to_numeric(s, errors="coerce").fillna(0).sum())),
+            loaded_stops=("_loaded_eff", "sum"),
             distinct_routes=("route_id", "nunique"),
             distinct_drivers=("drivers", "nunique"),
             distinct_customers=("customer", "nunique"),
@@ -1175,11 +1194,15 @@ def compute_temp_compliance(
     setpoint_c: float = PLASMA_TEMP_SETPOINT_C,
     tolerance_c: float = PLASMA_TEMP_TOLERANCE_C,
     min_excursion_minutes: int = TEMP_EXCURSION_MIN_MINUTES,
+    prefer_v2: bool = True,
 ) -> pd.DataFrame:
     """Per-route reefer temperature compliance summary.
 
     A stop only counts as an "excursion" if BOTH:
-      - The trailer was loaded with product at the stop (``loaded_at_stop == 1``).
+      - The trailer was loaded with product at the stop. The "loaded" verdict
+        comes from ``loaded_at_stop_v2`` when present (multi-signal +
+        manual-override) and falls back to legacy ``loaded_at_stop`` otherwise.
+        Pass ``prefer_v2=False`` to force the legacy single-signal verdict.
       - ``min_s1`` or ``max_s1`` falls outside ``setpoint_c ± tolerance_c``.
 
     Empty-trailer stops are tracked separately (``empty_stops_skipped``) so the
@@ -1192,7 +1215,7 @@ def compute_temp_compliance(
     df["route_id"] = _coerce_route_key(df)
 
     has_telem = df["telem_events"].fillna(0) > 0 if "telem_events" in df.columns else pd.Series(False, index=df.index)
-    is_loaded = df["loaded_at_stop"].fillna(0).astype(int) == 1 if "loaded_at_stop" in df.columns else pd.Series(False, index=df.index)
+    is_loaded = _loaded_series(df, prefer_v2=prefer_v2) == 1
 
     if "min_s1" in df.columns and "max_s1" in df.columns:
         out_of_range = has_telem & (

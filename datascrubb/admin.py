@@ -130,6 +130,17 @@ TAB_BLOCKS = {
         "yaml_block": "observability",
         "keys": ["enabled", "db_path", "summarize_dataframes", "retention_days"],
     },
+    "Load Detection": {
+        "yaml_block": "load_detection",
+        "keys": [
+            "confidence_threshold",
+            "reefer_max_cargo_temp_c",
+            "setpoint_offline_threshold_c",
+            "setpoint_plasma_threshold_c",
+            "enable_crst", "enable_sap", "enable_reefer",
+            "enable_setpoint", "enable_sequence", "enable_bol",
+        ],
+    },
     "Warehouse Inclusion": {
         "yaml_block": "warehouse_inclusion",
         "keys": [
@@ -227,6 +238,14 @@ DEFAULTS = {
         "db_path": "data/observability.db",
         "summarize_dataframes": True,
         "retention_days": 30,
+    },
+    "load_detection": {
+        "confidence_threshold": 50,
+        "reefer_max_cargo_temp_c": -15.0,
+        "setpoint_offline_threshold_c": 0.0,
+        "setpoint_plasma_threshold_c": -20.0,
+        "enable_crst": True, "enable_sap": True, "enable_reefer": True,
+        "enable_setpoint": True, "enable_sequence": True, "enable_bol": False,
     },
     "warehouse_inclusion": {
         "otp": False, "dwell": False, "customer_scorecard": False,

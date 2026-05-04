@@ -57,6 +57,7 @@ NAV_GROUPS = {
     ],
     "🔍 Diagnostics": [
         ("🔍 Observability", "observability"),
+        ("🔎 Load Review", "load_review"),
     ],
 }
 

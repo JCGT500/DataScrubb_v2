@@ -115,10 +115,23 @@ sharepoint:
   auto_push_excel: true
   keep_last_n_backups: 12
 observability:
-  enabled: false
+  enabled: true
   db_path: data/observability.db
   summarize_dataframes: true
   retention_days: 30
+
+load_detection:
+  # Multi-signal trailer-load detection. See CLAUDE.md / LOGIC.md.
+  confidence_threshold: 50           # signals voting "loaded" / non-NaN signals (%) must be ≥ this
+  reefer_max_cargo_temp_c: -15.0     # max_cargo_temp ≤ this → reefer signal votes loaded
+  setpoint_offline_threshold_c: 0.0  # max_setpoint > this → trailer was off → setpoint votes empty
+  setpoint_plasma_threshold_c: -20.0 # min_setpoint ≤ this → in plasma cooling mode → setpoint votes loaded
+  enable_crst: true
+  enable_sap: true
+  enable_reefer: true
+  enable_setpoint: true
+  enable_sequence: true
+  enable_bol: false                  # off by default: typically populated for every stop in CRST → no signal
 logging:
   level: INFO
   file: logs/pipeline.log

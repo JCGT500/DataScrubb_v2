@@ -148,6 +148,30 @@ class ObservabilityConfig:
 
 
 @dataclass
+class LoadDetectionConfig:
+    confidence_threshold: int = 50
+    reefer_max_cargo_temp_c: float = -15.0
+    setpoint_offline_threshold_c: float = 0.0
+    setpoint_plasma_threshold_c: float = -20.0
+    enable_crst: bool = True
+    enable_sap: bool = True
+    enable_reefer: bool = True
+    enable_setpoint: bool = True
+    enable_sequence: bool = True
+    enable_bol: bool = False  # off by default — usually noise
+
+    def enabled_signals(self) -> tuple[str, ...]:
+        out = []
+        if self.enable_crst: out.append("crst")
+        if self.enable_sap: out.append("sap")
+        if self.enable_reefer: out.append("reefer")
+        if self.enable_setpoint: out.append("setpoint")
+        if self.enable_sequence: out.append("sequence")
+        if self.enable_bol: out.append("bol")
+        return tuple(out)
+
+
+@dataclass
 class SharepointConfig:
     enabled: bool = False
     tenant_id: str = ""
@@ -227,6 +251,7 @@ class Config:
     vanguard: VanguardConfig = field(default_factory=VanguardConfig)
     sharepoint: SharepointConfig = field(default_factory=SharepointConfig)
     observability: ObservabilityConfig = field(default_factory=ObservabilityConfig)
+    load_detection: LoadDetectionConfig = field(default_factory=LoadDetectionConfig)
     stop_classification: StopClassificationConfig = field(default_factory=StopClassificationConfig)
     warehouse_inclusion: WarehouseInclusionConfig = field(default_factory=WarehouseInclusionConfig)
     sources: dict[str, SourceConfig] = field(default_factory=dict)
@@ -293,6 +318,7 @@ def load_config(
     vanguard_section = cfg_data.get("vanguard", {}) or {}
     sharepoint_section = cfg_data.get("sharepoint", {}) or {}
     observability_section = cfg_data.get("observability", {}) or {}
+    load_detection_section = cfg_data.get("load_detection", {}) or {}
     classify_section = cfg_data.get("stop_classification", {}) or {}
     inclusion_section = cfg_data.get("warehouse_inclusion", {}) or {}
 
@@ -409,6 +435,18 @@ def load_config(
             db_path=_g(observability_section, "db_path", "data/observability.db"),
             summarize_dataframes=_g(observability_section, "summarize_dataframes", True),
             retention_days=_g(observability_section, "retention_days", 30),
+        ),
+        load_detection=LoadDetectionConfig(
+            confidence_threshold=_g(load_detection_section, "confidence_threshold", 50),
+            reefer_max_cargo_temp_c=_g(load_detection_section, "reefer_max_cargo_temp_c", -15.0),
+            setpoint_offline_threshold_c=_g(load_detection_section, "setpoint_offline_threshold_c", 0.0),
+            setpoint_plasma_threshold_c=_g(load_detection_section, "setpoint_plasma_threshold_c", -20.0),
+            enable_crst=_g(load_detection_section, "enable_crst", True),
+            enable_sap=_g(load_detection_section, "enable_sap", True),
+            enable_reefer=_g(load_detection_section, "enable_reefer", True),
+            enable_setpoint=_g(load_detection_section, "enable_setpoint", True),
+            enable_sequence=_g(load_detection_section, "enable_sequence", True),
+            enable_bol=_g(load_detection_section, "enable_bol", False),
         ),
         stop_classification=StopClassificationConfig(
             use_s_code_for_plasma=_g(classify_section, "use_s_code_for_plasma", True),

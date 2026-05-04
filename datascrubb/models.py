@@ -52,7 +52,18 @@ class StopMaster(Base):
     current_cases = Column(Float)
     cases_variance = Column(Float)
     sum_of_weight = Column(Float)
-    loaded_at_stop = Column(Integer)  # 1 if trailer had product during this stop
+    loaded_at_stop = Column(Integer)  # 1 if trailer had product during this stop (legacy single-signal)
+
+    # Multi-signal load detection (v2 — see datascrubb/kpi/load_detection.py)
+    load_signal_crst = Column(Integer)         # 0/1 — existing CRST cases logic
+    load_signal_sap = Column(Integer)          # 0/1/NULL — matched SAP segment with cases > 0
+    load_signal_reefer = Column(Integer)       # 0/1/NULL — telemetry reefer-behavior pattern
+    load_signal_setpoint = Column(Integer)     # 0/1/NULL — setpoint > 0 = empty, ≤ -20 = loaded
+    load_signal_sequence = Column(Integer)     # 0/1/NULL — route-walk inference
+    load_signal_bol = Column(Integer)          # 0/1/NULL — BOL field present
+    load_confidence = Column(Integer)          # 0..100 weighted confidence
+    load_state_disputed = Column(Integer)      # 0/1 — signals disagree with each other
+    loaded_at_stop_v2 = Column(Integer)        # 0/1 — final verdict (override > confidence > 0)
 
     # Trailer capacity / fill % (config > observed > default)
     cap_max_cases = Column(Float)
@@ -159,6 +170,8 @@ class TelemetryStop(Base):
     max_engine_hours = Column(Float)
     max_total_hours = Column(Float)
     setpoint_changes = Column(Integer)
+    min_setpoint_c = Column(Float)   # max(SP1) > 0 → trailer was off / unloaded
+    max_setpoint_c = Column(Float)   # min(SP1) ≤ -20 → trailer was cooling for plasma
     avg_da_ra_delta = Column(Float)
     # Vanguard-derived per-stop fields (frozen plasma diagnostics)
     avg_evap_delta = Column(Float)
@@ -243,3 +256,21 @@ class BillingSnapshot(Base):
 
     source_file = Column(String)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class LoadOverride(Base):
+    """Per-stop manual override of the loaded-at-stop verdict.
+
+    The user marks a specific stop as "known empty" or "known loaded" via the
+    Load Review dashboard page when auto-detection got it wrong. Persists
+    across pipeline re-runs (NOT dropped/recreated). Pipeline reads this
+    table during load detection and applies the override as the final step.
+    """
+
+    __tablename__ = "load_override"
+
+    transaction_id = Column(String, primary_key=True)
+    override_value = Column(Integer, nullable=False)  # 0 = empty, 1 = loaded
+    reason = Column(String)
+    set_by = Column(String)
+    set_at = Column(String, nullable=False)  # ISO timestamp string

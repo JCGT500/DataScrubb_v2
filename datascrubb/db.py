@@ -115,6 +115,10 @@ def upsert_stops(session: Session, df: pd.DataFrame) -> int:
         "cases_variance", "sum_of_weight",
         "cap_max_cases", "cap_max_weight_lbs", "capacity_source",
         "fill_pct_cases", "fill_pct_weight",
+        # Multi-signal load detection (v2)
+        "load_signal_crst", "load_signal_sap", "load_signal_reefer",
+        "load_signal_setpoint", "load_signal_sequence", "load_signal_bol",
+        "load_confidence", "load_state_disputed", "loaded_at_stop_v2",
     ]
     # Ensure missing columns exist as None
     for c in cols:
@@ -205,7 +209,7 @@ def upsert_telemetry_stops(session: Session, df: pd.DataFrame) -> int:
         "reefer_runtime_minutes", "reefer_gallons", "reefer_fuel_cost",
         "alarm_events", "min_battery", "avg_battery",
         "max_engine_hours", "max_total_hours",
-        "setpoint_changes", "avg_da_ra_delta",
+        "setpoint_changes", "min_setpoint_c", "max_setpoint_c", "avg_da_ra_delta",
         "avg_evap_delta", "min_evap_delta", "max_evap_delta", "da1_present_pct",
         "setpoint_compliance_pct", "defrost_event_count",
         "max_cargo_temp", "bulkhead_seal_index",

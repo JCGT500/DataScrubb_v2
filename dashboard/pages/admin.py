@@ -67,7 +67,7 @@ def render():
         "Matching", "Validation", "Reefer / Telemetry", "Claims-Risk",
         "Driver Scorecard", "Forecast & Detention", "Customer Churn",
         "Capacity", "Revenue", "Map UI", "Warehouse Inclusion",
-        "Reefer (Vanguard SOP)", "SharePoint", "Observability",
+        "Reefer (Vanguard SOP)", "SharePoint", "Observability", "Load Detection",
     ])
 
     # ───────── Matching ─────────
@@ -407,6 +407,10 @@ def render():
     with tabs[13]:
         _render_observability_tab(full)
 
+    # ───────── Load Detection ─────────
+    with tabs[14]:
+        _render_load_detection_tab(full)
+
     st.markdown("---")
     st.caption(
         f"Settings file: `{DEFAULT_YAML_PATH}` — version-control this file to track changes. "
@@ -683,3 +687,68 @@ def _render_observability_tab(full: dict) -> None:
             "retention_days": int(retention),
         })
     _tab_save_reset(block, _save, "obs")
+
+
+def _render_load_detection_tab(full: dict) -> None:
+    """Multi-signal load-detection knobs."""
+    st.subheader("Load Detection (multi-signal trailer-load verdict)")
+    st.caption(
+        "Trailer-load detection combines up to 6 signals. The verdict drives the "
+        "excursion logic — see **🔎 Diagnostics → Load Review** to inspect disputes "
+        "and override per-stop. See `LOGIC.md → Loaded-at-stop` for signal definitions."
+    )
+
+    block = "load_detection"
+    cur = full.get(block, {}) or {}
+
+    st.markdown("**Confidence threshold**")
+    threshold = st.slider(
+        "Min confidence to count as loaded (%)",
+        min_value=0, max_value=100,
+        value=int(_g(cur, "confidence_threshold", 50)),
+        step=5,
+        help="confidence = positive_signals / non_nan_signals × 100. ≥ this → loaded_at_stop_v2 = 1",
+    )
+
+    st.markdown("**Reefer signal thresholds**")
+    rcols = st.columns(3)
+    reefer_cold = rcols[0].number_input(
+        "Cargo cold threshold (°C)",
+        value=float(_g(cur, "reefer_max_cargo_temp_c", -15.0)),
+        step=1.0, format="%.1f",
+        help="max_cargo_temp ≤ this → reefer signal votes loaded",
+    )
+    sp_offline = rcols[1].number_input(
+        "Setpoint offline threshold (°C)",
+        value=float(_g(cur, "setpoint_offline_threshold_c", 0.0)),
+        step=1.0, format="%.1f",
+        help="max_setpoint > this → trailer was off → setpoint signal votes empty",
+    )
+    sp_plasma = rcols[2].number_input(
+        "Setpoint plasma threshold (°C)",
+        value=float(_g(cur, "setpoint_plasma_threshold_c", -20.0)),
+        step=1.0, format="%.1f",
+        help="min_setpoint ≤ this → in plasma cooling mode → setpoint signal votes loaded",
+    )
+
+    st.markdown("**Enabled signals**")
+    sc = st.columns(3)
+    e_crst = sc[0].checkbox("CRST cases", value=bool(_g(cur, "enable_crst", True)))
+    e_sap = sc[1].checkbox("SAP paperwork", value=bool(_g(cur, "enable_sap", True)))
+    e_reefer = sc[2].checkbox("Reefer cargo temp", value=bool(_g(cur, "enable_reefer", True)))
+    sd = st.columns(3)
+    e_setpoint = sd[0].checkbox("Setpoint pattern", value=bool(_g(cur, "enable_setpoint", True)))
+    e_sequence = sd[1].checkbox("Route sequence", value=bool(_g(cur, "enable_sequence", True)))
+    e_bol = sd[2].checkbox("BOL field", value=bool(_g(cur, "enable_bol", False)),
+                          help="Off by default — usually populated for every stop in CRST so it adds no signal.")
+
+    def _save():
+        update_block(block, {
+            "confidence_threshold": int(threshold),
+            "reefer_max_cargo_temp_c": float(reefer_cold),
+            "setpoint_offline_threshold_c": float(sp_offline),
+            "setpoint_plasma_threshold_c": float(sp_plasma),
+            "enable_crst": e_crst, "enable_sap": e_sap, "enable_reefer": e_reefer,
+            "enable_setpoint": e_setpoint, "enable_sequence": e_sequence, "enable_bol": e_bol,
+        })
+    _tab_save_reset(block, _save, "ld")
