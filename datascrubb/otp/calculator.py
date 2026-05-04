@@ -17,16 +17,28 @@ import numpy as np
 import pandas as pd
 
 from datascrubb.constants import OTP_TOLERANCE_MINUTES
+from datascrubb.observability import observe, quality_check
 
 logger = logging.getLogger("datascrubb.otp")
 
 
+@observe("calculate_otp")
 def calculate_otp(df: pd.DataFrame, tolerance_minutes: int = OTP_TOLERANCE_MINUTES) -> pd.DataFrame:
     """Add all OTP columns to a CRST DataFrame.
 
     Expects columns: actual_arrival, resolved_appt, original_appt
     (all as datetime). Returns a new DataFrame with OTP columns added.
     """
+    quality_check("crst_not_empty",
+                  df is not None and not df.empty,
+                  detail=f"crst has {0 if df is None else len(df)} rows",
+                  raise_on_fail=True)
+    quality_check("tolerance_positive", tolerance_minutes > 0,
+                  detail=f"tolerance={tolerance_minutes}")
+    quality_check("actual_arrival_column_present", "actual_arrival" in df.columns,
+                  detail=f"columns: {list(df.columns)[:10]}",
+                  raise_on_fail=True)
+
     crst = df.copy()
 
     # Ensure resolved_appt exists
@@ -81,6 +93,15 @@ def calculate_otp(df: pd.DataFrame, tolerance_minutes: int = OTP_TOLERANCE_MINUT
         len(crst),
         crst["otp_time_pass"].mean() * 100 if crst["otp_time_pass"].notna().any() else 0,
     )
+
+    # Output invariants
+    n_total = len(crst)
+    n_missing_appt = int(crst["resolved_appt"].isna().sum()) if "resolved_appt" in crst else 0
+    quality_check("most_stops_have_appointment",
+                  n_total == 0 or n_missing_appt / n_total < 0.5,
+                  detail=f"{n_missing_appt}/{n_total} stops missing resolved_appt")
+    quality_check("otp_columns_added",
+                  all(c in crst.columns for c in ("otp_day_pass", "otp_time_pass", "minutes_from_appt")))
 
     return crst
 

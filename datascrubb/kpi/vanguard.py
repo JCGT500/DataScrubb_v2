@@ -20,6 +20,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from datascrubb.observability import observe, quality_check
+
 logger = logging.getLogger("datascrubb.kpi.vanguard")
 
 
@@ -61,6 +63,7 @@ def _band_from_vci_simple(vci: float, cfg) -> str:
 # ─────────────── 1. Baselines ───────────────
 
 
+@observe("compute_unit_baselines")
 def compute_unit_baselines(stops_df: pd.DataFrame, vanguard_cfg) -> pd.DataFrame:
     """Per-trailer 30-day rolling baseline from clean stops.
 
@@ -71,6 +74,9 @@ def compute_unit_baselines(stops_df: pd.DataFrame, vanguard_cfg) -> pd.DataFrame
         trailer, baseline_evap_delta, baseline_compliance_pct,
         baseline_defrost_per_day, baseline_window_days, baseline_source.
     """
+    quality_check("stops_df_not_empty",
+                  stops_df is not None and not stops_df.empty,
+                  detail=f"{0 if stops_df is None else len(stops_df)} stops")
     if stops_df is None or stops_df.empty:
         return pd.DataFrame()
     if "trailer" not in stops_df.columns:
@@ -171,12 +177,24 @@ def _scale_band(value: float, healthy_min: float, healthy_max: float,
     return 100.0                # ≥ -1 → critical / failed
 
 
+@observe("compute_trailer_vci")
 def compute_trailer_vci(
     stops_df: pd.DataFrame,
     baselines_df: pd.DataFrame,
     vanguard_cfg,
 ) -> pd.DataFrame:
     """Per-trailer VCI (Vanguard Cooling Index) + 4 subscores + bands + readiness."""
+    quality_check("stops_df_not_empty",
+                  stops_df is not None and not stops_df.empty,
+                  detail=f"{0 if stops_df is None else len(stops_df)} stops")
+    quality_check("trailer_column_present",
+                  stops_df is not None and "trailer" in stops_df.columns,
+                  detail="cannot compute VCI without trailer column")
+    quality_check("vci_weights_sum_to_one",
+                  abs((vanguard_cfg.weight_rh + vanguard_cfg.weight_dr
+                       + vanguard_cfg.weight_ts + vanguard_cfg.weight_abhf) - 1.0) < 0.01,
+                  detail=f"weights: RH={vanguard_cfg.weight_rh}, DR={vanguard_cfg.weight_dr}, "
+                         f"TS={vanguard_cfg.weight_ts}, ABHF={vanguard_cfg.weight_abhf}")
     if stops_df is None or stops_df.empty:
         return pd.DataFrame()
     if "trailer" not in stops_df.columns:
@@ -394,18 +412,35 @@ def compute_trailer_vci(
         "avg_bulkhead_idx", "cargo_temp_std",
         "hard_override_applied",
     ]
-    return per_trailer[[c for c in cols if c in per_trailer.columns]].sort_values("vci", ascending=False)
+    out = per_trailer[[c for c in cols if c in per_trailer.columns]].sort_values("vci", ascending=False)
+
+    # Output invariants
+    if not out.empty and "vci" in out.columns:
+        quality_check("vci_in_bounds",
+                      bool(out["vci"].between(0, 100).all()),
+                      detail=f"min={out['vci'].min()}, max={out['vci'].max()}")
+        critical_count = int((out["band"] == "CRITICAL").sum()) if "band" in out else 0
+        red_count = int((out["band"] == "RED").sum()) if "band" in out else 0
+        quality_check("not_overwhelmingly_red_or_critical",
+                      len(out) == 0 or (critical_count + red_count) / len(out) < 0.7,
+                      detail=f"{critical_count} CRITICAL + {red_count} RED out of {len(out)} trailers — "
+                             "model may be too aggressive or fleet has a real problem")
+    return out
 
 
 # ─────────────── 3. Alerts ───────────────
 
 
+@observe("compute_vanguard_alerts")
 def compute_vanguard_alerts(
     stops_df: pd.DataFrame,
     vci_df: pd.DataFrame,
     vanguard_cfg,
 ) -> pd.DataFrame:
     """Persist one row per active alert per trailer."""
+    quality_check("vci_df_not_empty",
+                  vci_df is not None and not vci_df.empty,
+                  detail="no VCI data → no alerts")
     if vci_df is None or vci_df.empty:
         return pd.DataFrame()
 

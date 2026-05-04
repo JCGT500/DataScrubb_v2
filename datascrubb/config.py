@@ -140,6 +140,14 @@ class VanguardConfig:
 
 
 @dataclass
+class ObservabilityConfig:
+    enabled: bool = False
+    db_path: str = "data/observability.db"
+    summarize_dataframes: bool = True
+    retention_days: int = 30
+
+
+@dataclass
 class SharepointConfig:
     enabled: bool = False
     tenant_id: str = ""
@@ -218,6 +226,7 @@ class Config:
     map: MapConfig = field(default_factory=MapConfig)
     vanguard: VanguardConfig = field(default_factory=VanguardConfig)
     sharepoint: SharepointConfig = field(default_factory=SharepointConfig)
+    observability: ObservabilityConfig = field(default_factory=ObservabilityConfig)
     stop_classification: StopClassificationConfig = field(default_factory=StopClassificationConfig)
     warehouse_inclusion: WarehouseInclusionConfig = field(default_factory=WarehouseInclusionConfig)
     sources: dict[str, SourceConfig] = field(default_factory=dict)
@@ -283,6 +292,7 @@ def load_config(
     map_section = cfg_data.get("map", {}) or {}
     vanguard_section = cfg_data.get("vanguard", {}) or {}
     sharepoint_section = cfg_data.get("sharepoint", {}) or {}
+    observability_section = cfg_data.get("observability", {}) or {}
     classify_section = cfg_data.get("stop_classification", {}) or {}
     inclusion_section = cfg_data.get("warehouse_inclusion", {}) or {}
 
@@ -393,6 +403,12 @@ def load_config(
             auto_push_db=_g(sharepoint_section, "auto_push_db", True),
             auto_push_excel=_g(sharepoint_section, "auto_push_excel", True),
             keep_last_n_backups=_g(sharepoint_section, "keep_last_n_backups", 12),
+        ),
+        observability=ObservabilityConfig(
+            enabled=_g(observability_section, "enabled", False),
+            db_path=_g(observability_section, "db_path", "data/observability.db"),
+            summarize_dataframes=_g(observability_section, "summarize_dataframes", True),
+            retention_days=_g(observability_section, "retention_days", 30),
         ),
         stop_classification=StopClassificationConfig(
             use_s_code_for_plasma=_g(classify_section, "use_s_code_for_plasma", True),

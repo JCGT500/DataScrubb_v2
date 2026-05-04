@@ -558,6 +558,14 @@ customers:
 </ol>
 <p>After editing, <strong>re-run the pipeline</strong> (Load Data → Run) to recompute revenue and margin.</p>
 <p>For the <strong>revenue formula</strong> see <a href="LOGIC.md#customer-revenue">LOGIC.md → Customer Revenue</a>.</p>
+<h3 id="observability-kpi-calculation-audit-trail">Observability (KPI calculation audit trail)</h3>
+<p>Optional. When enabled (<code>observability.enabled: true</code> in <code>config/default.yaml</code>, or via Admin → Observability), every wrapped KPI calculation writes a row to <code>data/observability.db</code> with inputs, output, duration, and any quality-check results. Use the <strong>🔍 Diagnostics → Observability</strong> page to:</p>
+<ul>
+<li>See pass-rate per quality check across the last 24h (failures float to top)</li>
+<li>Filter recent calculations by status (<code>ok</code> / <code>flagged</code> / <code>error</code>)</li>
+<li>Paste a pipeline <code>run_id</code> into the Trace explorer to see every calc + check that fired during that run</li>
+</ul>
+<p>Eight KPI functions are instrumented today: <code>calculate_otp</code>, <code>compute_route_revenue</code>, <code>lookup_banded_rate</code>, <code>compute_unit_baselines</code>, <code>compute_trailer_vci</code>, <code>compute_vanguard_alerts</code>, <code>compute_claims_risk</code>, <code>compute_driver_scorecard</code>. See <code>CLAUDE.md</code> Section 2 for the conventions and how to instrument new calcs. Disabled by default; zero-overhead pass-through when off.</p>
 <h3 id="banded-pricing-mile-band-weight-band">Banded pricing (mile band × weight band)</h3>
 <p>Some carrier tariffs price by a 2D rate matrix instead of flat $/mile + $/stop. DataScrubb supports this as a <strong>per-customer opt-in</strong> — set <code>pricing_model: banded</code> on a customer and provide:</p>
 <ul>

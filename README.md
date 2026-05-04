@@ -299,6 +299,16 @@ After editing, **re-run the pipeline** (Load Data → Run) to recompute revenue 
 
 For the **revenue formula** see [LOGIC.md → Customer Revenue](LOGIC.md#customer-revenue).
 
+### Observability (KPI calculation audit trail)
+
+Optional. When enabled (`observability.enabled: true` in `config/default.yaml`, or via Admin → Observability), every wrapped KPI calculation writes a row to `data/observability.db` with inputs, output, duration, and any quality-check results. Use the **🔍 Diagnostics → Observability** page to:
+
+- See pass-rate per quality check across the last 24h (failures float to top)
+- Filter recent calculations by status (`ok` / `flagged` / `error`)
+- Paste a pipeline `run_id` into the Trace explorer to see every calc + check that fired during that run
+
+Eight KPI functions are instrumented today: `calculate_otp`, `compute_route_revenue`, `lookup_banded_rate`, `compute_unit_baselines`, `compute_trailer_vci`, `compute_vanguard_alerts`, `compute_claims_risk`, `compute_driver_scorecard`. See `CLAUDE.md` Section 2 for the conventions and how to instrument new calcs. Disabled by default; zero-overhead pass-through when off.
+
 ### Banded pricing (mile band × weight band)
 
 Some carrier tariffs price by a 2D rate matrix instead of flat $/mile + $/stop. DataScrubb supports this as a **per-customer opt-in** — set `pricing_model: banded` on a customer and provide:

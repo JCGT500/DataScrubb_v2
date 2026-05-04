@@ -109,11 +109,33 @@ class Pipeline:
         engine = get_engine(self.config.db_path)
         init_db(engine)
 
+        # Initialize observability (no-op if disabled). Apply retention before
+        # this run starts writing audit rows.
+        from datascrubb.observability import (
+            apply_retention as _obs_retention,
+            configure as _obs_configure,
+            correlation as _obs_correlation,
+        )
+        obs_cfg = getattr(self.config, "observability", None)
+        if obs_cfg and getattr(obs_cfg, "enabled", False):
+            _obs_configure(
+                enabled=True,
+                db_path=obs_cfg.db_path,
+                summarize_dataframes=obs_cfg.summarize_dataframes,
+            )
+            deleted = _obs_retention(obs_cfg.retention_days)
+            if any(deleted):
+                logger.info("Observability retention: deleted %d calcs, %d checks", *deleted)
+        else:
+            _obs_configure(enabled=False)
+
         # Track raw DataFrames for Excel export
         raw_data: dict[str, pd.DataFrame] = {}
         records_read: dict[str, int] = {}
 
         try:
+          # All instrumented calcs in this run share the run_id as correlation_id
+          with _obs_correlation(run_id):
             # ─── Step 1: Load and normalize each source ───
             crst_df = None
             sap_df = None

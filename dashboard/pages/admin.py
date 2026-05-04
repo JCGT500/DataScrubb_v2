@@ -67,7 +67,7 @@ def render():
         "Matching", "Validation", "Reefer / Telemetry", "Claims-Risk",
         "Driver Scorecard", "Forecast & Detention", "Customer Churn",
         "Capacity", "Revenue", "Map UI", "Warehouse Inclusion",
-        "Reefer (Vanguard SOP)", "SharePoint",
+        "Reefer (Vanguard SOP)", "SharePoint", "Observability",
     ])
 
     # ───────── Matching ─────────
@@ -403,6 +403,10 @@ def render():
     with tabs[12]:
         _render_sharepoint_tab(full)
 
+    # ───────── Observability ─────────
+    with tabs[13]:
+        _render_observability_tab(full)
+
     st.markdown("---")
     st.caption(
         f"Settings file: `{DEFAULT_YAML_PATH}` — version-control this file to track changes. "
@@ -621,3 +625,61 @@ def _render_sharepoint_tab(full: dict) -> None:
                 st.success(f"Restored DB from `{choice}` → {dest}")
             except (GraphError, Exception) as e:
                 st.error(f"Restore failed: {e}")
+
+
+def _render_observability_tab(full: dict) -> None:
+    """Observability admin tab — toggle audit trail + retention + DB stats."""
+    st.subheader("Observability (KPI calculation audit trail)")
+    st.caption(
+        "When enabled, every wrapped KPI calculation writes a row to "
+        "`data/observability.db` with inputs, output, duration, and any "
+        "quality_check results. Browse the trail from the **🔍 Diagnostics → "
+        "Observability** page. See `CLAUDE.md` Section 2 for the conventions."
+    )
+
+    block = "observability"
+    cur = full.get(block, {}) or {}
+
+    c1, c2 = st.columns([1, 2])
+    enabled = c1.checkbox(
+        "Enable observability",
+        value=bool(_g(cur, "enabled", False)),
+        help="When off, @observe is a zero-overhead pass-through and quality_check is a no-op.",
+    )
+    db_path = c2.text_input("Audit DB path", value=str(_g(cur, "db_path", "data/observability.db")))
+
+    c3, c4 = st.columns(2)
+    summarize = c3.checkbox(
+        "Summarize DataFrames",
+        value=bool(_g(cur, "summarize_dataframes", True)),
+        help="Capture {shape, columns, head_3} instead of the full DataFrame to keep the DB small.",
+    )
+    retention = c4.number_input(
+        "Retention (days)",
+        value=int(_g(cur, "retention_days", 30)),
+        min_value=0, step=1,
+        help="Audit rows older than this are deleted at the start of each pipeline run. 0 = keep all.",
+    )
+
+    # Quick stats from the audit DB (when enabled)
+    if enabled:
+        try:
+            from datascrubb.observability import configure as _obs_configure
+            from datascrubb.observability import total_row_counts
+            _obs_configure(enabled=True, db_path=db_path)
+            counts = total_row_counts()
+            st.caption(
+                f"Audit DB has **{counts['calculations']:,} calculations** and "
+                f"**{counts['quality_checks']:,} quality checks** recorded."
+            )
+        except Exception as e:
+            st.caption(f"Could not read audit DB stats: {e}")
+
+    def _save():
+        update_block(block, {
+            "enabled": enabled,
+            "db_path": db_path,
+            "summarize_dataframes": summarize,
+            "retention_days": int(retention),
+        })
+    _tab_save_reset(block, _save, "obs")

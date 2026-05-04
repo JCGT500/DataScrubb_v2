@@ -87,6 +87,10 @@ def rate_for(customer: str | None, matrix: dict) -> dict:
     return merged
 
 
+from datascrubb.observability import observe, quality_check
+
+
+@observe("lookup_banded_rate")
 def lookup_banded_rate(
     miles: float,
     weight_lbs: float,
@@ -132,6 +136,7 @@ def lookup_banded_rate(
     return float(rate_matrix[row][col])
 
 
+@observe("compute_route_revenue")
 def compute_route_revenue(
     stops_df: pd.DataFrame,
     m3pl_df: pd.DataFrame | None,
@@ -154,8 +159,18 @@ def compute_route_revenue(
         revenue_miles, revenue_stops, revenue_weight, revenue, cost,
         margin, margin_pct.
     """
+    quality_check("stops_df_not_empty",
+                  stops_df is not None and not stops_df.empty,
+                  detail=f"stops_df is {'None' if stops_df is None else f'empty (0 rows)'}")
     if stops_df is None or stops_df.empty:
         return pd.DataFrame()
+
+    quality_check("stops_df_has_order_column",
+                  ("order_#" in stops_df.columns) or ("order_number" in stops_df.columns),
+                  detail=f"columns: {list(stops_df.columns)[:10]}...")
+    quality_check("m3pl_df_present",
+                  m3pl_df is not None and not (hasattr(m3pl_df, "empty") and m3pl_df.empty),
+                  detail="missing M3PL → miles=0, cost=0 for every route (revenue will look broken)")
 
     matrix = rate_matrix if rate_matrix is not None else load_rate_matrix()
 
@@ -281,7 +296,22 @@ def compute_route_revenue(
         "revenue_miles", "revenue_stops", "revenue_weight", "revenue_banded",
         "revenue", "cost", "margin", "margin_pct",
     ]
-    return routes[cols].sort_values("margin", ascending=False)
+    out = routes[cols].sort_values("margin", ascending=False)
+
+    # Output invariants
+    n_routes = len(out)
+    n_zero_revenue = int((out["revenue"] == 0).sum()) if "revenue" in out else 0
+    n_zero_miles = int((out["miles"] == 0).sum()) if "miles" in out else 0
+    quality_check("revenue_non_negative",
+                  bool((out["revenue"] >= 0).all()),
+                  detail=f"min revenue = {out['revenue'].min() if n_routes else 'n/a'}")
+    quality_check("most_routes_have_miles",
+                  n_routes == 0 or n_zero_miles / n_routes < 0.5,
+                  detail=f"{n_zero_miles}/{n_routes} routes have miles=0 (M3PL not joined?)")
+    quality_check("most_routes_have_revenue",
+                  n_routes == 0 or n_zero_revenue / n_routes < 0.1,
+                  detail=f"{n_zero_revenue}/{n_routes} routes have revenue=0")
+    return out
 
 
 def compute_trailer_revenue_weekly(

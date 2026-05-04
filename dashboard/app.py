@@ -55,6 +55,9 @@ NAV_GROUPS = {
         ("🔗 SAP Matching", "sap_matching"),
         ("✅ Validation Report", "validation_report"),
     ],
+    "🔍 Diagnostics": [
+        ("🔍 Observability", "observability"),
+    ],
 }
 
 

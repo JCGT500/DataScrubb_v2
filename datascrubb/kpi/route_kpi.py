@@ -12,6 +12,8 @@ import logging
 import numpy as np
 import pandas as pd
 
+from datascrubb.observability import observe, quality_check
+
 logger = logging.getLogger("datascrubb.kpi")
 
 PLASMA_TEMP_SETPOINT_C = -25.0
@@ -353,6 +355,7 @@ def compute_loaded_miles(
     return seg.sort_values("estimated_deadhead_miles", ascending=False, na_position="last")
 
 
+@observe("compute_driver_scorecard")
 def compute_driver_scorecard(
     stops_df: pd.DataFrame,
     *,
@@ -366,6 +369,12 @@ def compute_driver_scorecard(
     Score = w_otp * otp_norm + w_late * (1-late_norm) + w_dwell * (1-dwell_norm)
           + w_var * (1-variance_norm), all min-max scaled, then × 100.
     """
+    quality_check("driver_weights_sum_to_one",
+                  abs((weight_otp + weight_late_rate + weight_dwell + weight_cases_variance) - 1.0) < 0.01,
+                  detail=f"weights: otp={weight_otp}, late={weight_late_rate}, dwell={weight_dwell}, var={weight_cases_variance}")
+    quality_check("drivers_column_present",
+                  stops_df is not None and "drivers" in stops_df.columns,
+                  detail="cannot score drivers without 'drivers' column")
     if stops_df is None or stops_df.empty or "drivers" not in stops_df.columns:
         return pd.DataFrame()
 
@@ -495,6 +504,7 @@ def compute_lane_profitability(
     return lane.sort_values("margin", ascending=False)
 
 
+@observe("compute_claims_risk")
 def compute_claims_risk(
     stops_df: pd.DataFrame,
     *,
@@ -518,6 +528,12 @@ def compute_claims_risk(
     All thresholds and weights are tunable via kwargs (driven by
     config/default.yaml at pipeline runtime).
     """
+    quality_check("claims_risk_weights_sum_to_one",
+                  abs((weight_short_cases + weight_excursion + weight_door_events) - 1.0) < 0.01,
+                  detail=f"weights: cases={weight_short_cases}, excursion={weight_excursion}, doors={weight_door_events}")
+    quality_check("bands_well_ordered",
+                  band_high > band_medium,
+                  detail=f"band_high={band_high}, band_medium={band_medium}")
     if stops_df is None or stops_df.empty:
         return pd.DataFrame()
 

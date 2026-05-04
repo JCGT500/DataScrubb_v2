@@ -114,6 +114,11 @@ sharepoint:
   auto_push_db: true
   auto_push_excel: true
   keep_last_n_backups: 12
+observability:
+  enabled: false
+  db_path: data/observability.db
+  summarize_dataframes: true
+  retention_days: 30
 logging:
   level: INFO
   file: logs/pipeline.log

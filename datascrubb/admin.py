@@ -126,6 +126,10 @@ TAB_BLOCKS = {
             "auto_push_db", "auto_push_excel", "keep_last_n_backups",
         ],
     },
+    "Observability": {
+        "yaml_block": "observability",
+        "keys": ["enabled", "db_path", "summarize_dataframes", "retention_days"],
+    },
     "Warehouse Inclusion": {
         "yaml_block": "warehouse_inclusion",
         "keys": [
@@ -217,6 +221,12 @@ DEFAULTS = {
         "db_backup_folder": "Shared Documents/DataScrubb/Backups",
         "auto_push_db": True, "auto_push_excel": True,
         "keep_last_n_backups": 12,
+    },
+    "observability": {
+        "enabled": False,
+        "db_path": "data/observability.db",
+        "summarize_dataframes": True,
+        "retention_days": 30,
     },
     "warehouse_inclusion": {
         "otp": False, "dwell": False, "customer_scorecard": False,
